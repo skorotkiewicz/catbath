@@ -1,51 +1,51 @@
-%23 https%3A%2F%2Fgithub.com%2Fcasey%2Fjust
+# https://github.com/casey/just
 
-%5Bprivate%5D
-default%3A
-    %40just --list
+[private]
+default:
+    @just --list
 
-build%3A
+build:
     cargo build --release
 
-build-all%3A
+build-all:
     cargo build --release --all-features
 
-run *args%3A
-    cargo run --all-features -- %7B%7B args %7D%7D
+run *args:
+    cargo run --all-features -- {{ args }}
 
-fmt%3A
+fmt:
     cargo fmt
     cargo clippy --all-targets --all-features -- -D warnings
-    %23 cargo shear --fix %23 cargo install shear
+    # cargo shear --fix # cargo install shear
 
-check%3A
+check:
     cargo fmt --check
     cargo clippy --all-targets --all-features -- -D warnings
 
-test%3A fmt
+test: fmt
     cargo test
 
-install-hook%3A
-    %40printf '%23!%2Fbin%2Fsh%5Cnset -e%5Cnjust check%5Cn' %3E .git%2Fhooks%2Fpre-commit
-    %40chmod %2Bx .git%2Fhooks%2Fpre-commit
+install-hook:
+    @printf '#!/bin/sh\nset -e\njust check\n' > .git/hooks/pre-commit
+    @chmod +x .git/hooks/pre-commit
 
-remove-hook%3A
-    %40rm .git%2Fhooks%2Fpre-commit
+remove-hook:
+    @rm .git/hooks/pre-commit
 
-add-tag%3A
-    %23!%2Fusr%2Fbin%2Fenv bash
+add-tag:
+    #!/usr/bin/env bash
     set -euo pipefail
-    VERSION%3D%24(grep '%5Eversion' Cargo.toml %7C head -1 %7C cut -d'%22' -f2)
+    VERSION=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
     git push origin main
-    git tag -a %22v%24%7BVERSION%7D%22 -m %22Release v%24%7BVERSION%7D%22
-    git push origin %22v%24%7BVERSION%7D%22
+    git tag -a "v${VERSION}" -m "Release v${VERSION}"
+    git push origin "v${VERSION}"
 
-%23 %60just remove-tag v0.0.0%60 or %60just remove-tag%60 (uses fzf)
-remove-tag VERSION%3D%22%22%3A
-    %23!%2Fusr%2Fbin%2Fenv bash
+# `just remove-tag v0.0.0` or `just remove-tag` (uses fzf)
+remove-tag VERSION="":
+    #!/usr/bin/env bash
     set -euo pipefail
-    tag%3D%22%7B%7B VERSION %7D%7D%22
-    %5B -z %22%24tag%22 %5D %26%26 tag%3D%24(git tag %7C sort -V %7C fzf --prompt%3D%22Select tag to remove%3A %22)
-    %5B -z %22%24tag%22 %5D %26%26 echo %22No tag selected%22 %26%26 exit 1
-    git tag -d %22%24tag%22
-    git push --delete origin %22%24tag%22
+    tag="{{ VERSION }}"
+    [ -z "$tag" ] && tag=$(git tag | sort -V | fzf --prompt="Select tag to remove: ")
+    [ -z "$tag" ] && echo "No tag selected" && exit 1
+    git tag -d "$tag"
+    git push --delete origin "$tag"
