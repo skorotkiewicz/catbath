@@ -352,7 +352,7 @@ fn render(editor: &Editor, stdout: &mut io::Stdout, width: u16, height: u16) -> 
     let cy = 1u16 + (editor.cursor_row - editor.scroll) as u16;
     let cx = 7u16 + editor.cursor_col as u16;
     if cy < height - 1 {
-        queue!(stdout, MoveTo(cx, cy))?;
+        queue!(stdout, MoveTo(cx, cy), Show)?;
     }
     stdout.flush()?;
     Ok(())
