@@ -71,7 +71,7 @@ fn handle_http(mut stream: TcpStream, ed: &mut Editor, file_path: &Path) -> io::
         return Ok(());
     }
 
-    // Serve nice HTML editor (Tailwind CDN = modern look, zero size cost to binary)
+    // Serve plain HTML editor
     let fname = file_path
         .file_name()
         .and_then(|s: &std::ffi::OsStr| s.to_str())
@@ -85,42 +85,25 @@ fn handle_http(mut stream: TcpStream, ed: &mut Editor, file_path: &Path) -> io::
 
     let html = format!(
         r#"<!DOCTYPE html>
-<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>editor — {fname}</title>
-<script src="https://cdn.tailwindcss.com"></script>
-<style>body{{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace}}</style>
+<html><head><meta charset="utf-8"><title>editor: {fname}</title>
+<style>
+body{{margin:0;background:#111;color:#eee;font-family:monospace;height:100vh;display:flex;flex-direction:column}}
+textarea{{flex:1;border:0;outline:0;background:#111;color:#eee;}}
+</style>
 </head>
-<body class="bg-[#0a0a0a] text-[#e5e5e5]">
-<div class="max-w-[1200px] mx-auto p-6">
-  <div class="flex items-center justify-between mb-4">
-    <div class="flex items-center gap-x-3">
-      <div class="text-2xl font-semibold tracking-tighter">editor</div>
-      <div class="text-[10px] px-2 py-px rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">WEB MODE</div>
-    </div>
-    <div class="text-sm text-zinc-500">editing <span class="font-mono text-emerald-400">{fname}</span></div>
-    <button onclick="doSave()" class="px-5 py-2 rounded-xl bg-white text-black text-sm font-medium flex items-center gap-2 active:scale-[0.985] hover:bg-zinc-100 transition">
-      <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.25" d="M17 13v6m-3-3h6M6 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4l2 2h8a2 2 0 012 2v3"/></svg>
-      SAVE TO DISK
-    </button>
-  </div>
-
-  <textarea id="ed" class="w-full h-[70vh] p-5 bg-[#111] border border-white/10 focus:border-emerald-500/60 rounded-3xl text-sm leading-relaxed outline-none" spellcheck="false" onkeydown="if((event.ctrlKey||event.metaKey)&&event.key==='s'){{event.preventDefault();doSave()}}">{content}</textarea>
-
-  <div class="flex justify-between text-[10px] text-zinc-500 mt-3 px-1">
-    <div>Ctrl/Cmd+S saves directly to the file on disk • Changes are immediate</div>
-    <div class="font-mono">single-binary Rust • &lt;1MB</div>
-  </div>
+<body>
+<div style="padding:5px 10px;background:#222;color:#8f8">
+<b>editor</b> - {fname} <span style="color:#888;font-size:12px">(ctrl+s to save)</span>
 </div>
+<textarea id="ed" spellcheck="false">{content}</textarea>
 <script>
-async function doSave() {{
-  const txt = document.getElementById('ed').value;
-  const res = await fetch('/save', {{ method:'POST', headers:{{'Content-Type':'application/x-www-form-urlencoded'}}, body: 'content='+encodeURIComponent(txt) }});
-  if (res.ok) {{
-    const b = document.querySelector('button'); b.style.background='#166534'; b.textContent='SAVED!';
-    setTimeout(()=>location.reload(), 650);
-  }} else alert('Save failed');
-}}
-tailwind.config = {{theme:{{extend:{{}}}}}};
+document.getElementById('ed').addEventListener('keydown',e={{
+  if((e.ctrlKey||e.metaKey)&&e.key==='s'){{
+    e.preventDefault();
+    fetch('/save',{{method:'POST',body:'content='+encodeURIComponent(document.getElementById('ed').value)}})
+      .then(()=>alert('saved'));
+  }}
+}});
 </script>
 </body></html>"#
     );
