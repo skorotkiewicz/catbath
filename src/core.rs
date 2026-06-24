@@ -1,6 +1,13 @@
-use std::fs;
-use std::io;
+// use std::fs;
+// use std::io;
 use std::path::PathBuf;
+
+use std::{
+    fs,
+    io::{self, Stdio, Write},
+    path::Path,
+    process::{Command, Stdio},
+};
 
 pub struct Editor {
     pub lines: Vec<String>,
@@ -62,13 +69,70 @@ impl Editor {
         }
     }
 
-    pub fn save(&mut self) -> io::Result<()> {
-        let content = self.lines.join("\n");
-        fs::write(&self.file_path, content)?;
-        self.modified = false;
-        self.message = Some(format!("> saved {}", self.file_path.display()));
-        Ok(())
+    pub fn load(path: &str) -> io::Result<String> {
+        if let Some(rest) = path.strip_prefix("ssh://") {
+            // Split "user@host" from "/path/to/file"
+            let (target, remote_path) = rest.split_once('/').unwrap_or((rest, ""));
+            let remote_path = format!("/{}", remote_path);
+
+            // Executes: ssh user@host cat /path/to/file
+            let out = Command::new("ssh")
+                .arg(target)
+                .arg("cat")
+                .arg(&remote_path)
+                .output()?;
+
+            if !out.status.success() {
+                return Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    String::from_utf8_lossy(&out.stderr).to_string(),
+                ));
+            }
+            return Ok(String::from_utf8_lossy(&out.stdout).into_owned());
+        }
+
+        if Path::new(path).exists() {
+            fs::read_to_string(path)
+        } else {
+            Ok(String::new())
+        }
     }
+
+    pub fn save(path: &str, s: &str) -> io::Result<()> {
+        if let Some(rest) = path.strip_prefix("ssh://") {
+            let (target, remote_path) = rest.split_once('/').unwrap_or((rest, ""));
+            let remote_path = format!("/{}", remote_path);
+
+            // Executes: ssh user@host tee /path/to/file
+            // We pipe the text into stdin, and drop tee's stdout to /dev/null.
+            let mut child = Command::new("ssh")
+                .arg(target)
+                .arg("tee")
+                .arg(&remote_path)
+                .stdin(Stdio::piped())
+                .stdout(Stdio::null())
+                .spawn()?;
+
+            if let Some(mut stdin) = child.stdin.take() {
+                stdin.write_all(s.as_bytes())?;
+            } // stdin drops here, sending EOF to ssh
+
+            let status = child.wait()?;
+            if !status.success() {
+                return Err(io::Error::new(io::ErrorKind::Other, "ssh save failed"));
+            }
+            return Ok(());
+        }
+
+        fs::write(path, s)
+    }
+    // pub fn save(&mut self) -> io::Result<()> {
+    //     let content = self.lines.join("\n");
+    //     fs::write(&self.file_path, content)?;
+    //     self.modified = false;
+    //     self.message = Some(format!("> saved {}", self.file_path.display()));
+    //     Ok(())
+    // }
 
     pub fn insert_char(&mut self, c: char) {
         self.push_undo();
@@ -241,7 +305,9 @@ impl Editor {
     }
 
     pub fn cut_line(&mut self) {
-        if self.cursor_row >= self.lines.len() { return; }
+        if self.cursor_row >= self.lines.len() {
+            return;
+        }
 
         // If the last action wasn't a cut, clear the clipboard to start a new block.
         if !self.last_op_was_cut {
@@ -268,13 +334,15 @@ impl Editor {
     }
 
     pub fn paste(&mut self) {
-        if self.clip_lines.is_empty() { return; }
+        if self.clip_lines.is_empty() {
+            return;
+        }
         self.push_undo();
 
         // O(N) block insertion
         self.lines.splice(
             self.cursor_row..self.cursor_row,
-            self.clip_lines.iter().cloned()
+            self.clip_lines.iter().cloned(),
         );
 
         self.cursor_row += self.clip_lines.len();
