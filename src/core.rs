@@ -20,7 +20,7 @@ pub struct Editor {
 impl Editor {
     pub fn new(path: PathBuf) -> io::Result<Self> {
         let path_str = path.to_string_lossy();
-        let content = Self::load(&path_str)?;
+        let content = Self::load(&path_str).unwrap_or_default();
         let lines = if content.is_empty() {
             vec!["".to_string()]
         } else {
