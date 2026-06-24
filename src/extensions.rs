@@ -5,14 +5,17 @@ use std::{
 };
 
 pub fn run(key: &str, input: &str, file: &str, row: usize, col: usize) -> io::Result<String> {
-    let home = env::var("HOME").map_err(|_| io::Error::other("HOME not set"))?;
-    let ext_dir = format!("{}/.config/catbath/extensions", home);
+    let user_ext_dir = env::var("HOME")
+        .ok()
+        .map(|home| format!("{home}/.config/catbath/extensions"));
 
-    // Find a script that matches the key (e.g., F1, F2)
-    let script = std::fs::read_dir(&ext_dir)?
-        .filter_map(|e| e.ok())
-        .map(|e| e.path())
-        .find(|p| p.file_name().map(|f| f == key).unwrap_or(false));
+    let script = user_ext_dir
+        .iter()
+        .map(String::as_str)
+        .chain(std::iter::once("/usr/share/catbath/extensions"))
+        .filter_map(|dir| std::fs::read_dir(dir).ok())
+        .flat_map(|entries| entries.filter_map(Result::ok).map(|e| e.path()))
+        .find(|p| p.file_name().is_some_and(|f| f == key));
 
     if let Some(script) = script {
         let mut child = Command::new(&script)
