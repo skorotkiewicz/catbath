@@ -1,0 +1,3 @@
+#!/bin/bash
+# Minify HTML/JS (~/.config/catbath/extensions/F4)
+npx terser

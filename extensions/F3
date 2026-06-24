@@ -1,0 +1,16 @@
+#!/usr/bin/env python3
+# AI Autocomplete / ChatGPT rewrite (~/.config/catbath/extensions/F3)
+import sys, os, openai
+
+text = sys.stdin.read()
+openai.api_key = os.getenv("OPENAI_API_KEY")
+
+# Example: Fix bugs in the code
+resp = openai.ChatCompletion.create(
+    model="gpt-4",
+    messages=[
+        {"role": "system", "content": "Fix any bugs in this code and return ONLY the fixed code."},
+        {"role": "user", "content": text}
+    ]
+)
+print(resp.choices[0].message.content.strip(), end="")

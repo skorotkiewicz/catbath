@@ -1,0 +1,3 @@
+#!/bin/bash
+# Format Rust code using rustfmt (~/.config/catbath/extensions/F2)
+rustfmt --emit stdout
