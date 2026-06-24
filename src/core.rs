@@ -1,11 +1,6 @@
-// use std::fs;
-// use std::io;
-use std::path::PathBuf;
-
 use std::{
-    fs,
-    io::{self, Stdio, Write},
-    path::Path,
+    fs, io,
+    path::{Path, PathBuf},
     process::{Command, Stdio},
 };
 
@@ -24,15 +19,12 @@ pub struct Editor {
 
 impl Editor {
     pub fn new(path: PathBuf) -> io::Result<Self> {
-        let lines = if path.exists() {
-            let content = fs::read_to_string(&path)?;
-            if content.is_empty() {
-                vec!["".to_string()]
-            } else {
-                content.lines().map(str::to_string).collect()
-            }
-        } else {
+        let path_str = path.to_string_lossy();
+        let content = Self::load(&path_str)?;
+        let lines = if content.is_empty() {
             vec!["".to_string()]
+        } else {
+            content.lines().map(str::to_string).collect()
         };
         Ok(Self {
             lines,
@@ -83,8 +75,7 @@ impl Editor {
                 .output()?;
 
             if !out.status.success() {
-                return Err(io::Error::new(
-                    io::ErrorKind::Other,
+                return Err(io::Error::other(
                     String::from_utf8_lossy(&out.stderr).to_string(),
                 ));
             }
@@ -98,13 +89,10 @@ impl Editor {
         }
     }
 
-    pub fn save(path: &str, s: &str) -> io::Result<()> {
+    pub fn save_to(path: &str, s: &str) -> io::Result<()> {
         if let Some(rest) = path.strip_prefix("ssh://") {
             let (target, remote_path) = rest.split_once('/').unwrap_or((rest, ""));
             let remote_path = format!("/{}", remote_path);
-
-            // Executes: ssh user@host tee /path/to/file
-            // We pipe the text into stdin, and drop tee's stdout to /dev/null.
             let mut child = Command::new("ssh")
                 .arg(target)
                 .arg("tee")
@@ -112,27 +100,25 @@ impl Editor {
                 .stdin(Stdio::piped())
                 .stdout(Stdio::null())
                 .spawn()?;
-
             if let Some(mut stdin) = child.stdin.take() {
+                use std::io::Write;
                 stdin.write_all(s.as_bytes())?;
-            } // stdin drops here, sending EOF to ssh
-
-            let status = child.wait()?;
-            if !status.success() {
-                return Err(io::Error::new(io::ErrorKind::Other, "ssh save failed"));
+            }
+            if !child.wait()?.success() {
+                return Err(io::Error::other("ssh save failed"));
             }
             return Ok(());
         }
-
         fs::write(path, s)
     }
-    // pub fn save(&mut self) -> io::Result<()> {
-    //     let content = self.lines.join("\n");
-    //     fs::write(&self.file_path, content)?;
-    //     self.modified = false;
-    //     self.message = Some(format!("> saved {}", self.file_path.display()));
-    //     Ok(())
-    // }
+
+    pub fn save(&mut self) -> io::Result<()> {
+        let content = self.lines.join("\n");
+        Self::save_to(&self.file_path.to_string_lossy(), &content)?;
+        self.modified = false;
+        self.message = Some(format!("> saved {}", self.file_path.display()));
+        Ok(())
+    }
 
     pub fn insert_char(&mut self, c: char) {
         self.push_undo();
