@@ -76,7 +76,8 @@ pub fn render(editor: &Editor, stdout: &mut io::Stdout, width: u16, height: u16)
         } else {
             line
         };
-        queue!(stdout, MoveTo(7, y), Print(disp))?;
+        queue!(stdout, MoveTo(7, y))?;
+        editor.render_line(stdout, disp)?;
     }
 
     // Bottom bar

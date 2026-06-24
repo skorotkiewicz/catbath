@@ -1,4 +1,5 @@
 mod core;
+mod syntax;
 mod tui;
 mod web;
 

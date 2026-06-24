@@ -1,7 +1,14 @@
 use std::{
-    fs, io,
+    fs,
+    io::{self, Write},
     path::{Path, PathBuf},
     process::{Command, Stdio},
+};
+
+use crate::syntax;
+use crossterm::{
+    queue,
+    style::{Color, ResetColor, SetForegroundColor},
 };
 
 pub struct Editor {
@@ -15,6 +22,7 @@ pub struct Editor {
     pub undo_stack: Vec<(Vec<String>, usize, usize)>,
     pub message: Option<String>,
     pub clip_lines: Vec<String>,
+    pub syntax: Option<syntax::Syntax>,
 }
 
 impl Editor {
@@ -26,6 +34,8 @@ impl Editor {
         } else {
             content.lines().map(str::to_string).collect()
         };
+        let syntax = syntax::Syntax::load(path_str.as_ref());
+
         Ok(Self {
             lines,
             cursor_row: 0,
@@ -37,7 +47,69 @@ impl Editor {
             undo_stack: Vec::with_capacity(30),
             clip_lines: Vec::new(),
             message: Some("^x quit | ^w save | ^z undo | ^k cut | ^u paste | ^f search | click or scroll with mouse".to_string()),
+            syntax,
         })
+    }
+
+    pub fn render_line(&self, out: &mut impl Write, vis: &str) -> io::Result<()> {
+        let syn = match &self.syntax {
+            Some(s) => s,
+            None => return out.write_all(vis.as_bytes()),
+        };
+        let bytes = vis.as_bytes();
+        let comment = syn.comment.as_bytes();
+        let mut i = 0;
+
+        while i < bytes.len() {
+            // 1. Comments (lazy: just check prefix)
+            if !comment.is_empty() && bytes[i..].starts_with(comment) {
+                queue!(out, SetForegroundColor(Color::DarkGrey))?;
+                out.write_all(&bytes[i..])?;
+                queue!(out, ResetColor)?;
+                return Ok(()); // Rest of line is comment
+            }
+
+            // 2. Strings (lazy: no escape logic, just find next quote)
+            if bytes[i] == syn.string as u8 {
+                queue!(out, SetForegroundColor(Color::Green))?;
+                out.write_all(&[bytes[i]])?;
+                i += 1;
+                while i < bytes.len() && bytes[i] != syn.string as u8 {
+                    out.write_all(&[bytes[i]])?;
+                    i += 1;
+                }
+                if i < bytes.len() {
+                    out.write_all(&[bytes[i]])?; // closing quote
+                    i += 1;
+                }
+                queue!(out, ResetColor)?;
+                continue;
+            }
+
+            // 3. Keywords & Types (lazy: only alphanumeric)
+            if bytes[i].is_ascii_alphabetic() || bytes[i] == b'_' {
+                let start = i;
+                while i < bytes.len() && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_') {
+                    i += 1;
+                }
+                let word = &vis[start..i];
+                if syn.keywords.contains(word) {
+                    queue!(out, SetForegroundColor(Color::Yellow))?;
+                } else if syn.types.contains(word) {
+                    queue!(out, SetForegroundColor(Color::Cyan))?;
+                } else {
+                    queue!(out, ResetColor)?;
+                }
+                out.write_all(word.as_bytes())?;
+                queue!(out, ResetColor)?;
+                continue;
+            }
+
+            // 4. Default text
+            out.write_all(&[bytes[i]])?;
+            i += 1;
+        }
+        Ok(())
     }
 
     fn push_undo(&mut self) {

@@ -34,3 +34,9 @@ cargo build --release
 # or
 yay -S catbath
 ```
+
+## syntax
+```sh
+mkdir -p ~/.config/catbath/syntax
+echo -e "keywords: def class return import if else\ncomment: #\nstring: \"" > ~/.config/catbath/syntax/py
+```
