@@ -6,6 +6,8 @@
 
 A tiny terminal text editor in Rust. Single binary, zero dependencies.
 
+<img src="cath.png" height="180" />
+
 ## Usage
 
 ```
