@@ -44,6 +44,8 @@ jobs:
           cp ../README.md README.md
           cp ../LICENSE LICENSE
           cp -R ../syntax syntax
+          cp -R ../extensions extensions
+          chmod +x extensions/*
           tar czf ../catbath-${{ github.ref_name }}-${{ matrix.target }}.tar.gz *
 
       - name: Package (Windows)
@@ -54,6 +56,7 @@ jobs:
           copy README.md dist\README.md
           copy LICENSE dist\LICENSE
           Copy-Item syntax dist\syntax -Recurse
+          Copy-Item extensions dist\extensions -Recurse
           cd dist && 7z a ..\catbath-${{ github.ref_name }}-${{ matrix.target }}.zip *
 
       - uses: actions/upload-artifact@v4
