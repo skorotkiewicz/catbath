@@ -1,0 +1,433 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>catbath</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b0d10;
+      --panel: #12161c;
+      --panel-2: #171c24;
+      --text: #f0f4f8;
+      --muted: #9aa7b2;
+      --green: #59f29b;
+      --cyan: #69d7ff;
+      --amber: #f6c76f;
+      --pink: #ff7eb6;
+      --line: #2b3440;
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      letter-spacing: 0;
+    }
+
+    a { color: inherit; }
+
+    .shell {
+      min-height: 100vh;
+      display: grid;
+      grid-template-rows: auto 1fr;
+    }
+
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+      padding: 14px clamp(18px, 4vw, 56px);
+      border-bottom: 1px solid var(--line);
+      background: rgba(11, 13, 16, .92);
+      backdrop-filter: blur(10px);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--green);
+      font-weight: 800;
+    }
+
+    .prompt { color: var(--amber); }
+
+    nav {
+      display: flex;
+      gap: 18px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    nav a {
+      text-decoration: none;
+      white-space: nowrap;
+    }
+
+    nav a:hover { color: var(--cyan); }
+
+    main {
+      display: grid;
+      gap: 48px;
+      padding-bottom: 56px;
+    }
+
+    .hero {
+      min-height: calc(100vh - 54px);
+      display: grid;
+      align-content: center;
+      gap: 32px;
+      padding: 40px clamp(18px, 4vw, 56px) 28px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(280px, 520px);
+      align-items: center;
+      gap: clamp(28px, 5vw, 72px);
+    }
+
+    h1 {
+      margin: 0;
+      color: var(--green);
+      font-size: clamp(54px, 12vw, 150px);
+      line-height: .82;
+      letter-spacing: 0;
+    }
+
+    .tagline {
+      max-width: 680px;
+      margin: 22px 0 0;
+      color: var(--text);
+      font-size: clamp(20px, 2.8vw, 36px);
+      line-height: 1.12;
+    }
+
+    .aside {
+      max-width: 590px;
+      margin-top: 22px;
+      color: var(--muted);
+      font-size: clamp(14px, 1.4vw, 17px);
+      line-height: 1.7;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 28px;
+    }
+
+    .button {
+      display: inline-flex;
+      align-items: center;
+      min-height: 42px;
+      padding: 0 16px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      color: var(--text);
+      text-decoration: none;
+      font-weight: 700;
+    }
+
+    .button.primary {
+      border-color: #2f8a5b;
+      background: #102117;
+      color: var(--green);
+    }
+
+    .button:hover {
+      border-color: var(--cyan);
+      color: var(--cyan);
+    }
+
+    .screen {
+      overflow: hidden;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      box-shadow: 0 22px 80px rgba(0, 0, 0, .38);
+    }
+
+    .screen-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      height: 34px;
+      padding: 0 12px;
+      border-bottom: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 12px;
+      background: #171c23;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--pink);
+    }
+
+    .dot:nth-child(2) { background: var(--amber); }
+    .dot:nth-child(3) { background: var(--green); }
+
+    .screen-title { margin-left: 8px; }
+
+    .screen img {
+      display: block;
+      width: 100%;
+      height: auto;
+      background: #0d0f12;
+    }
+
+    .hint {
+      align-self: end;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    section {
+      padding: 0 clamp(18px, 4vw, 56px);
+    }
+
+    .section-inner {
+      max-width: 1160px;
+      margin: 0 auto;
+    }
+
+    h2 {
+      margin: 0 0 18px;
+      color: var(--cyan);
+      font-size: clamp(26px, 4vw, 44px);
+      letter-spacing: 0;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .tile {
+      min-height: 160px;
+      padding: 18px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+    }
+
+    .tile b {
+      display: block;
+      margin-bottom: 12px;
+      color: var(--amber);
+      font-size: 15px;
+    }
+
+    .tile p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .code {
+      overflow-x: auto;
+      margin: 18px 0 0;
+      padding: 18px;
+      border: 1px solid var(--line);
+      background: #080a0d;
+      color: var(--green);
+      font-size: 14px;
+      line-height: 1.7;
+    }
+
+    .code .dim { color: #6f7b85; }
+    .code .cyan { color: var(--cyan); }
+
+    .keys {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(110px, 1fr));
+      gap: 10px;
+      margin-top: 18px;
+    }
+
+    .key {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      min-height: 44px;
+      padding: 0 12px;
+      border: 1px solid var(--line);
+      background: var(--panel-2);
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .key code {
+      color: var(--green);
+      font-weight: 800;
+    }
+
+    footer {
+      padding: 10px clamp(18px, 4vw, 56px) 32px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    @media (max-width: 820px) {
+      header {
+        position: static;
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      nav {
+        width: 100%;
+        overflow-x: auto;
+        padding-bottom: 4px;
+      }
+
+      .hero {
+        min-height: auto;
+        padding-top: 34px;
+      }
+
+      .hero-grid,
+      .grid {
+        grid-template-columns: 1fr;
+      }
+
+      .keys {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header>
+      <div class="brand">$ catbath</div>
+      <nav aria-label="sections">
+        <a href="#install">install</a>
+        <a href="#keys">keys</a>
+        <a href="#extensions">extensions</a>
+        <a href="https://github.com/skorotkiewicz/catbath">source</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero" aria-labelledby="intro-title">
+        <div class="hero-grid">
+          <div>
+            <h1 id="intro-title">catbath</h1>
+            <p class="tagline">a tiny editor for people who think F2 should format code.</p>
+            <p class="aside">
+              Terminal-first, browser-curious, and extension-friendly. It edits files,
+              searches text, undoes mistakes, follows the mouse, and lets shell scripts
+              borrow the whole buffer for one-key tricks.
+            </p>
+            <div class="actions">
+              <a class="button primary" href="#install">install</a>
+              <a class="button" href="#extensions">teach F-keys</a>
+            </div>
+          </div>
+
+          <figure class="screen" aria-label="catbath terminal screenshot">
+            <div class="screen-bar">
+              <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+              <span class="screen-title">tty://catbath</span>
+            </div>
+            <img src="https://github.com/skorotkiewicz/catbath/blob/main/cath.png?raw=true" alt="catbath terminal editor screenshot">
+          </figure>
+        </div>
+        <div class="hint">scroll for the tiny manual</div>
+      </section>
+
+      <section id="install">
+        <div class="section-inner">
+          <h2>boot sequence</h2>
+          <div class="grid">
+            <div class="tile">
+              <b>terminal mode</b>
+              <p>Open a file, stay in the shell, edit without inviting a desktop-sized IDE.</p>
+            </div>
+            <div class="tile">
+              <b>browser mode</b>
+              <p>Use <code>-w</code> when a textarea and a tab are the correct amount of UI.</p>
+            </div>
+            <div class="tile">
+              <b>remote files</b>
+              <p>Point at <code>ssh://user@host/path/file.txt</code> when the file lives elsewhere.</p>
+            </div>
+          </div>
+          <pre class="code"><span class="dim"># build it</span>
+<span class="cyan">$</span> cargo build --release
+
+<span class="dim"># or install it</span>
+<span class="cyan">$</span> yay -S catbath
+
+<span class="dim"># open something suspicious</span>
+<span class="cyan">$</span> catbath -w src/main.rs</pre>
+        </div>
+      </section>
+
+      <section id="keys">
+        <div class="section-inner">
+          <h2>keyboard lore</h2>
+          <div class="keys" aria-label="keyboard shortcuts">
+            <div class="key"><code>^Q</code><span>quit</span></div>
+            <div class="key"><code>^S</code><span>save</span></div>
+            <div class="key"><code>^Z</code><span>undo</span></div>
+            <div class="key"><code>^K</code><span>cut</span></div>
+            <div class="key"><code>^U</code><span>paste</span></div>
+            <div class="key"><code>^F</code><span>search</span></div>
+            <div class="key"><code>F1..F12</code><span>run extension</span></div>
+            <div class="key"><code>mouse</code><span>click + scroll</span></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="extensions">
+        <div class="section-inner">
+          <h2>F-key magic</h2>
+          <div class="grid">
+            <div class="tile">
+              <b>stdin in</b>
+              <p>The whole buffer is piped into your script.</p>
+            </div>
+            <div class="tile">
+              <b>stdout out</b>
+              <p>Print the edited buffer back, and catbath swaps it in.</p>
+            </div>
+            <div class="tile">
+              <b>context included</b>
+              <p>Scripts get file path, row, and column as environment variables.</p>
+            </div>
+          </div>
+          <pre class="code"><span class="dim"># F2: format code with rustfmt</span>
+<span class="cyan">$</span> mkdir -p ~/.config/catbath/extensions
+<span class="cyan">$</span> printf '%s\n' '#!/bin/sh' 'rustfmt --emit stdout' &gt; ~/.config/catbath/extensions/F2
+<span class="cyan">$</span> chmod +x ~/.config/catbath/extensions/F2</pre>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      catbath speaks fluent tiny. Side effects may include fewer editor tabs.
+    </footer>
+  </div>
+</body>
+</html>
