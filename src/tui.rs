@@ -206,6 +206,33 @@ pub fn run(path: &str) -> io::Result<()> {
                                     ed.insert_char(' ');
                                 }
                             }
+                            (_, KeyCode::F(n)) => {
+                                let key = format!("F{}", n);
+                                let input = self.lines.join("\n");
+
+                                // Show a status message while running (if it's a slow LLM script)
+                                self.status = format!("running {}...", key);
+                                self.render(&mut std::io::stdout()).ok();
+
+                                match extensions::run(&key, &input, &self.file, self.row, self.col)
+                                {
+                                    Ok(out) => {
+                                        if out != input {
+                                            // self.push_undo(); // Make sure you have undo!
+                                            self.lines = if out.is_empty() {
+                                                vec![String::new()]
+                                            } else {
+                                                out.split('\n').map(String::from).collect()
+                                            };
+                                            self.dirty = true;
+                                            self.status = format!("{} applied", key);
+                                        } else {
+                                            self.status = format!("{} returned no changes", key);
+                                        }
+                                    }
+                                    Err(e) => self.status = format!("ext err: {}", e),
+                                }
+                            }
                             _ => {}
                         }
                     }

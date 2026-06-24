@@ -62,6 +62,13 @@ pub fn serve(l: TcpListener, file: String) -> std::io::Result<()> {
                 let _ = Editor::save_to(&file, std::str::from_utf8(&body).unwrap_or(""));
                 ("200 OK", "text/plain", b"ok".to_vec())
             }
+            ("POST", p) if p.starts_with("/ext/") => {
+                let key = p.trim_start_matches("/ext/"); // e.g., "F1"
+                let input = std::str::from_utf8(&body).unwrap_or("");
+                let out =
+                    extensions::run(key, input, &file, 0, 0).unwrap_or_else(|e| e.to_string());
+                ("200 OK", "text/plain", out.into_bytes())
+            }
             _ => ("404 Not Found", "text/plain", b"404".to_vec()),
         };
 

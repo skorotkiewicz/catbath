@@ -9,6 +9,8 @@ textarea{flex:1;border:0;outline:0;background:#111;color:#eee;}
 <div style="padding:5px 10px;background:#222">
 <b>editor</b> - {fname}
 <button onclick="doSave()" style="margin-left:10px">Save</button>
+<button onclick="runExt('F1')">F1</button>
+<button onclick="runExt('F2')">F2</button>
 <span style="color:#888;font-size:12px" id="saved">(ctrl+e to save)</span>
 </div>
 <textarea id="ed" spellcheck="false">{content}</textarea>
@@ -27,5 +29,18 @@ e.preventDefault();
 doSave();
 }
 });
+async function runExt(key) {
+    st.textContent = 'running ' + key + '...';
+    const res = await fetch('/ext/' + key, {method:'POST', body: ed.value});
+    const newText = await res.text();
+    if (newText) {
+        ed.value = newText;
+        dirty = true;
+        st.textContent = key + ' applied';
+        syncHl(); // Re-run syntax highlighter
+    } else {
+        st.textContent = 'error';
+    }
+}
 </script>
 </body></html>
