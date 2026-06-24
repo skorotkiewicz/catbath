@@ -42,6 +42,12 @@ yay -S catbath
 catbath can run tiny scripts on the whole buffer with one key. For example,
 press `F2` to format Rust code with `rustfmt`.
 
+```sh
+mkdir -p ~/.config/catbath/extensions
+echo -e '#!/bin/sh\nrustfmt --emit stdout' > ~/.config/catbath/extensions/F2
+chmod +x ~/.config/catbath/extensions/F2
+```
+
 ## syntax
 
 ```sh
