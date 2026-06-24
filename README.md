@@ -2,9 +2,10 @@
 
 [![Build](https://img.shields.io/github/v/release/skorotkiewicz/catbath?style=flat-square)](https://github.com/skorotkiewicz/catbath/actions)
 [![AUR](https://img.shields.io/aur/version/catbath?style=flat-square)](https://aur.archlinux.org/packages/catbath)
-[![Size](https://img.shields.io/badge/size-460KB-blue?style=flat-square)](https://github.com/skorotkiewicz/catbath/releases)
+[![Size](https://img.shields.io/badge/size-476K-blue?style=flat-square)](https://github.com/skorotkiewicz/catbath/releases)
 
-a tiny terminal text editor in rust with search, undo, mouse. 
+a tiny editor: terminal-first, browser-curious, extension-friendly.
+> ...for people who think F2 should format code.
 
 <img src="cath.png" height="180" />
 
@@ -26,6 +27,7 @@ catbath [-g|-w] <file>
 - `^K` cut 
 - `^U` paste
 - `^F` search
+- `F1`..`F12` run extensions
 
 ## build
 
@@ -35,7 +37,13 @@ cargo build --release
 yay -S catbath
 ```
 
+## extensions
+
+catbath can run tiny scripts on the whole buffer with one key. For example,
+press `F2` to format Rust code with `rustfmt`.
+
 ## syntax
+
 ```sh
 mkdir -p ~/.config/catbath/syntax
 echo -e "keywords: def class return import if else\ncomment: #\nstring: \"" > ~/.config/catbath/syntax/py
