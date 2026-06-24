@@ -4,21 +4,21 @@
 [![AUR](https://img.shields.io/aur/version/catbath?style=flat-square)](https://aur.archlinux.org/packages/catbath)
 [![Size](https://img.shields.io/badge/size-464KB-blue?style=flat-square)](https://github.com/skorotkiewicz/catbath/releases)
 
-A tiny terminal text editor in Rust. Single binary, zero dependencies.
+a tiny terminal text editor in Rust. Single binary, zero dependencies.
 
 <img src="cath.png" height="180" />
 
-## Usage
+## usage
 
 ```
-editor [-g|-w] <file>
+catbath [-g|-w] <file>
 ```
 
 - `-g` GUI mode (TUI provided)
 - `-w` Web mode (browser editor)
 - `ssh://user@host/path/file.txt` for remote editing
 
-## Keys
+## keys
 
 - `^Q` quit
 - `^S` save
@@ -27,7 +27,7 @@ editor [-g|-w] <file>
 - `^U` paste cut lines
 - `^F` search
 
-## Build
+## build
 
 ```sh
 cargo build --release
