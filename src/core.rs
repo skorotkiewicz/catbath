@@ -33,7 +33,7 @@ impl Editor {
             file_path: path,
             modified: false,
             undo_stack: Vec::with_capacity(30),
-            message: Some("ctrl+q quit • ctrl+s save • ctrl+z undo • ctrl+f search • click or scroll with mouse".to_string()),
+            message: Some("^x quit | ^w save | ^z undo | ^f search | click or scroll with mouse".to_string()),
         })
     }
 
@@ -62,7 +62,7 @@ impl Editor {
         let content = self.lines.join("\n");
         fs::write(&self.file_path, content)?;
         self.modified = false;
-        self.message = Some(format!("✓ saved {}", self.file_path.display()));
+        self.message = Some(format!("> saved {}", self.file_path.display()));
         Ok(())
     }
 

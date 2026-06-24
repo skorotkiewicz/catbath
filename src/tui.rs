@@ -32,7 +32,7 @@ pub fn render(editor: &Editor, stdout: &mut io::Stdout, width: u16, height: u16)
         .and_then(|n| n.to_str())
         .unwrap_or("untitled");
     let top = format!(
-        " {} {}  •  {}  •  ctrl+c quit  ctrl+s save  ctrl+z undo  ctrl+f search",
+        " {} {}  x  {}  x  ^x quit  ^w save  ^z undo  ^f search",
         fname,
         if editor.modified { "(*)" } else { "" },
         editor.file_path.display()
@@ -175,8 +175,8 @@ pub fn run(path: &str) -> io::Result<()> {
                         }
                     } else {
                         match (code, modifiers) {
-                            (KeyCode::Char('c'), KeyModifiers::CONTROL) => break,
-                            (KeyCode::Char('s'), KeyModifiers::CONTROL) => {
+                            (KeyCode::Char('x'), KeyModifiers::CONTROL) => break,
+                            (KeyCode::Char('w'), KeyModifiers::CONTROL) => {
                                 let _ = ed.save();
                             }
                             (KeyCode::Char('z'), KeyModifiers::CONTROL) => ed.undo(),
@@ -248,9 +248,8 @@ pub fn run(path: &str) -> io::Result<()> {
         DisableMouseCapture
     )?;
     terminal::disable_raw_mode()?;
-    println!("+ done. file: {}", ed.file_path.display());
     if ed.modified {
-        println!("   (had unsaved changes on exit)");
+        println!("file: `{}` had unsaved changes", ed.file_path.display());
     }
     Ok(())
 }
