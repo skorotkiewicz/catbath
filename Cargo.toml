@@ -2,8 +2,7 @@
 name = "catbath"
 version = "0.1.0"
 edition = "2024"
-authors = ["Lazy Senior Dev"]
-description = "Full efficient graphic text editor: TUI (main), GUI/Web placeholders. Single binary <1MB optimized. Useful basic editor with search, undo, mouse."
+description = "a tiny terminal text editor with search, undo, mouse."
 
 [dependencies]
 crossterm = "0.28"
