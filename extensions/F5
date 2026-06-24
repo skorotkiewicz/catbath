@@ -1,0 +1,15 @@
+#!/bin/bash
+# Fix bugs using pi (~/.config/catbath/extensions/F5)
+set -euo pipefail
+
+code=$(cat)
+
+pi --print \
+  --no-session \
+  --no-tools \
+  --no-context-files \
+  --no-extensions \
+  --no-skills \
+  --no-prompt-templates \
+  --system-prompt "Fix any bugs in this code and return ONLY the fixed code." \
+  "$code"
