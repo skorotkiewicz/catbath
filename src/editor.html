@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>editor: {fname}</title>
+<style>
+body{margin:0;background:#111;color:#eee;font-family:monospace;height:100vh;display:flex;flex-direction:column}
+textarea{flex:1;border:0;outline:0;background:#111;color:#eee;}
+</style>
+</head>
+<body>
+<div style="padding:5px 10px;background:#222">
+<b>editor</b> - {fname}
+<button onclick="doSave()" style="margin-left:10px">Save</button>
+<span style="color:#888;font-size:12px" id="saved">(ctrl+e to save)</span>
+</div>
+<textarea id="ed" spellcheck="false">{content}</textarea>
+<script>
+function doSave(){
+fetch('/save',{method:'POST',body:document.getElementById('ed').value})
+.then(()=>{
+let s=document.getElementById('saved');
+s.textContent='saved';
+setTimeout(()=>s.textContent='(ctrl+e to save)',650);
+});
+}
+document.addEventListener('keydown',e=>{
+if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='e'){
+e.preventDefault();
+doSave();
+}
+});
+</script>
+</body></html>
