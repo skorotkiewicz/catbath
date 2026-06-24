@@ -27,6 +27,8 @@ editor [-g|-w] <file>
 
 ## Build
 
-```
+```sh
 cargo build --release
+# or
+yay -S catbath
 ```
