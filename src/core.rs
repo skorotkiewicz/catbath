@@ -11,7 +11,7 @@ pub struct Editor {
     pub modified: bool,
     pub undo_stack: Vec<(Vec<String>, usize, usize)>,
     pub message: Option<String>,
-    pub clipboard: String,
+    pub clip_lines: Vec<String>,
 }
 
 impl Editor {
@@ -34,7 +34,7 @@ impl Editor {
             file_path: path,
             modified: false,
             undo_stack: Vec::with_capacity(30),
-            clipboard: String::new(),
+            clip_lines: Vec::new(),
             message: Some("^x quit | ^w save | ^z undo | ^k cut | ^u paste | ^f search | click or scroll with mouse".to_string()),
         })
     }
@@ -242,13 +242,15 @@ impl Editor {
         if self.cursor_row >= self.lines.len() {
             return;
         }
-        self.clipboard = self.lines[self.cursor_row].clone();
+        let line = self.lines[self.cursor_row].clone();
+        self.clip_lines.push(line);
         if self.cursor_row + 1 < self.lines.len() {
             self.lines[self.cursor_row] = self.lines.remove(self.cursor_row + 1);
         } else {
             self.lines.remove(self.cursor_row);
             if self.lines.is_empty() {
                 self.lines.push("".to_string());
+                self.cursor_row = 0;
             }
         }
         self.cursor_col = 0;
@@ -256,14 +258,16 @@ impl Editor {
     }
 
     pub fn paste(&mut self) {
-        if self.clipboard.is_empty() {
+        if self.clip_lines.is_empty() {
             return;
         }
         self.push_undo();
-        let row = self.cursor_row.min(self.lines.len().saturating_sub(1));
-        self.lines.insert(row, self.clipboard.clone());
-        self.cursor_row = row + 1;
+        for (i, line) in self.clip_lines.iter().enumerate() {
+            self.lines.insert(self.cursor_row + i, line.clone());
+        }
+        self.cursor_row += self.clip_lines.len();
         self.cursor_col = 0;
+        // Keep clip_lines for repeated paste
         self.modified = true;
     }
 }
