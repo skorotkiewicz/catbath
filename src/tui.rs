@@ -32,7 +32,7 @@ pub fn render(editor: &Editor, stdout: &mut io::Stdout, width: u16, height: u16)
         .and_then(|n| n.to_str())
         .unwrap_or("untitled");
     let top = format!(
-        " {} {}  x  {}  x  ^x quit  ^w save  ^z undo  ^f search",
+        " {} {}  |  {}  |  ^x quit  ^w save  ^z undo  ^k cut  ^u paste  ^f search",
         fname,
         if editor.modified { "(*)" } else { "" },
         editor.file_path.display()
@@ -180,6 +180,8 @@ pub fn run(path: &str) -> io::Result<()> {
                                 let _ = ed.save();
                             }
                             (KeyCode::Char('z'), KeyModifiers::CONTROL) => ed.undo(),
+                            (KeyCode::Char('k'), KeyModifiers::CONTROL) => ed.cut_line(),
+                            (KeyCode::Char('u'), KeyModifiers::CONTROL) => ed.paste(),
                             (KeyCode::Char('f'), KeyModifiers::CONTROL) => {
                                 searching = true;
                                 q.clear();

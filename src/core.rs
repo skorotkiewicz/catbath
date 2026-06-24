@@ -11,6 +11,7 @@ pub struct Editor {
     pub modified: bool,
     pub undo_stack: Vec<(Vec<String>, usize, usize)>,
     pub message: Option<String>,
+    pub clipboard: String,
 }
 
 impl Editor {
@@ -33,7 +34,8 @@ impl Editor {
             file_path: path,
             modified: false,
             undo_stack: Vec::with_capacity(30),
-            message: Some("^x quit | ^w save | ^z undo | ^f search | click or scroll with mouse".to_string()),
+            clipboard: String::new(),
+            message: Some("^x quit | ^w save | ^z undo | ^k cut | ^u paste | ^f search | click or scroll with mouse".to_string()),
         })
     }
 
@@ -234,5 +236,34 @@ impl Editor {
         }
         self.message = Some(format!("not found: '{}'", query));
         false
+    }
+
+    pub fn cut_line(&mut self) {
+        if self.cursor_row >= self.lines.len() {
+            return;
+        }
+        self.clipboard = self.lines[self.cursor_row].clone();
+        if self.cursor_row + 1 < self.lines.len() {
+            self.lines[self.cursor_row] = self.lines.remove(self.cursor_row + 1);
+        } else {
+            self.lines.remove(self.cursor_row);
+            if self.lines.is_empty() {
+                self.lines.push("".to_string());
+            }
+        }
+        self.cursor_col = 0;
+        self.modified = true;
+    }
+
+    pub fn paste(&mut self) {
+        if self.clipboard.is_empty() {
+            return;
+        }
+        self.push_undo();
+        let row = self.cursor_row.min(self.lines.len().saturating_sub(1));
+        self.lines.insert(row, self.clipboard.clone());
+        self.cursor_row = row + 1;
+        self.cursor_col = 0;
+        self.modified = true;
     }
 }
