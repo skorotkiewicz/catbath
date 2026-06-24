@@ -31,7 +31,7 @@ fn main() {
         "tui" => tui::run(file).unwrap(),
         "gui" => {
             println!(
-                "GUI mode: TUI provided instead (modern terminals = GPU 'GUI', zero extra size)."
+                "GUI mode: TUI provided instead (modern terminals = GUI)"
             );
             tui::run(file).unwrap()
         }
