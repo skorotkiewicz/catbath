@@ -11,10 +11,23 @@ pub struct Syntax {
 impl Syntax {
     pub fn load(file: &str) -> Option<Self> {
         let ext = Path::new(file).extension()?.to_str()?;
-        let home = std::env::var("HOME").ok()?;
-        let path = format!("{}/.config/catbath/syntax/{}", home, ext);
-        let content = std::fs::read_to_string(path).ok()?;
-        Some(Self::parse(&content))
+        if let Ok(home) = std::env::var("HOME") {
+            let path = format!("{}/.config/catbath/syntax/{}", home, ext);
+            if let Ok(content) = std::fs::read_to_string(path) {
+                return Some(Self::parse(&content));
+            }
+        }
+
+        for path in [
+            format!("syntax/{}", ext),
+            format!("/usr/share/catbath/syntax/{}", ext),
+        ] {
+            if let Ok(content) = std::fs::read_to_string(path) {
+                return Some(Self::parse(&content));
+            }
+        }
+
+        None
     }
 
     fn parse(content: &str) -> Self {
