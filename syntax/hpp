@@ -1,0 +1,4 @@
+keywords: alignas alignof and asm auto bitand bitor bool break case catch char class compl concept const constexpr const_cast continue co_await co_return co_yield decltype default delete do double dynamic_cast else enum explicit export extern false float for friend goto if inline int long mutable namespace new noexcept not nullptr operator or private protected public register reinterpret_cast requires return short signed sizeof static static_assert static_cast struct switch template this throw true try typedef typeid typename union unsigned using virtual void volatile while xor
+types: int64_t map optional shared_ptr size_t string unique_ptr unordered_map uint64_t variant vector
+comment: //
+string: "

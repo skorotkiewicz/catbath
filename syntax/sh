@@ -1,0 +1,4 @@
+keywords: break case continue do done elif else esac export false fi for function if in local readonly return select then true until while
+types: bash sh zsh
+comment: #
+string: "

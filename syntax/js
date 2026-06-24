@@ -1,0 +1,4 @@
+keywords: as async await break case catch class const continue default else export extends false finally for from function if import in instanceof let new null of return switch this throw true try typeof undefined var while
+types: Array Boolean Date Error JSON Map Number Object Promise Set String
+comment: //
+string: "
