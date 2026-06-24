@@ -1,7 +1,7 @@
 # catbath
 
 [![Build](https://img.shields.io/github/v/release/skorotkiewicz/catbath?style=flat-square)](https://github.com/skorotkiewicz/catbath/actions)
-[![AUR](https://img.shields.io/aur/version/catbath?style=flat-square)](https://github.com/skorotkiewicz/catbath/releases)
+[![AUR](https://img.shields.io/aur/version/catbath?style=flat-square)](https://aur.archlinux.org/packages/catbath)
 [![Size](https://img.shields.io/badge/size-464KB-blue?style=flat-square)](https://github.com/skorotkiewicz/catbath/releases)
 
 A tiny terminal text editor in Rust. Single binary, zero dependencies.
