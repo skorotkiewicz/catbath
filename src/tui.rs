@@ -17,6 +17,7 @@ use crossterm::{
 };
 
 use crate::core::Editor;
+use crate::extensions;
 
 pub fn render(editor: &Editor, stdout: &mut io::Stdout, width: u16, height: u16) -> io::Result<()> {
     queue!(stdout, Clear(ClearType::All))?;
@@ -206,31 +207,37 @@ pub fn run(path: &str) -> io::Result<()> {
                                     ed.insert_char(' ');
                                 }
                             }
-                            (_, KeyCode::F(n)) => {
+                            (KeyCode::F(n), _) => {
                                 let key = format!("F{}", n);
-                                let input = self.lines.join("\n");
+                                let input = ed.lines.join("\n");
 
-                                // Show a status message while running (if it's a slow LLM script)
-                                self.status = format!("running {}...", key);
-                                self.render(&mut std::io::stdout()).ok();
+                                ed.message = Some(format!("running {}...", key));
+                                render(&ed, &mut stdout, w, h).ok();
 
-                                match extensions::run(&key, &input, &self.file, self.row, self.col)
-                                {
+                                let file = ed.file_path.to_string_lossy();
+                                match extensions::run(
+                                    &key,
+                                    &input,
+                                    &file,
+                                    ed.cursor_row,
+                                    ed.cursor_col,
+                                ) {
                                     Ok(out) => {
                                         if out != input {
-                                            // self.push_undo(); // Make sure you have undo!
-                                            self.lines = if out.is_empty() {
+                                            ed.push_undo();
+                                            ed.lines = if out.is_empty() {
                                                 vec![String::new()]
                                             } else {
                                                 out.split('\n').map(String::from).collect()
                                             };
-                                            self.dirty = true;
-                                            self.status = format!("{} applied", key);
+                                            ed.modified = true;
+                                            ed.message = Some(format!("{} applied", key));
                                         } else {
-                                            self.status = format!("{} returned no changes", key);
+                                            ed.message =
+                                                Some(format!("{} returned no changes", key));
                                         }
                                     }
-                                    Err(e) => self.status = format!("ext err: {}", e),
+                                    Err(e) => ed.message = Some(format!("ext err: {}", e)),
                                 }
                             }
                             _ => {}

@@ -1,4 +1,5 @@
 use crate::core::Editor;
+use crate::extensions;
 use std::io::{Read, Write};
 use std::net::TcpListener;
 

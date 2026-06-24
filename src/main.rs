@@ -1,4 +1,5 @@
 mod core;
+mod extensions;
 mod syntax;
 mod tui;
 mod web;

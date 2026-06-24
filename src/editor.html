@@ -15,8 +15,10 @@ textarea{flex:1;border:0;outline:0;background:#111;color:#eee;}
 </div>
 <textarea id="ed" spellcheck="false">{content}</textarea>
 <script>
+const ed=document.getElementById('ed');
+const st=document.getElementById('saved');
 function doSave(){
-fetch('/save',{method:'POST',body:document.getElementById('ed').value})
+fetch('/save',{method:'POST',body:ed.value})
 .then(()=>{
 let s=document.getElementById('saved');
 s.textContent='saved';
@@ -29,18 +31,21 @@ e.preventDefault();
 doSave();
 }
 });
-async function runExt(key) {
-    st.textContent = 'running ' + key + '...';
-    const res = await fetch('/ext/' + key, {method:'POST', body: ed.value});
-    const newText = await res.text();
-    if (newText) {
-        ed.value = newText;
-        dirty = true;
-        st.textContent = key + ' applied';
-        syncHl(); // Re-run syntax highlighter
-    } else {
-        st.textContent = 'error';
-    }
+function runExt(key) {
+st.textContent = 'running ' + key + '...';
+fetch('/ext/' + key, {method:'POST', body: ed.value})
+.then(res => {
+if (!res.ok) throw new Error('extension failed');
+return res.text();
+})
+.then(newText => {
+const changed = newText !== ed.value;
+ed.value = newText;
+st.textContent = changed ? key + ' applied' : key + ' returned no changes';
+})
+.catch(() => {
+st.textContent = 'error';
+});
 }
 </script>
 </body></html>

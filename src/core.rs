@@ -112,7 +112,7 @@ impl Editor {
         Ok(())
     }
 
-    fn push_undo(&mut self) {
+    pub(crate) fn push_undo(&mut self) {
         if self.undo_stack.len() >= 30 {
             self.undo_stack.remove(0);
         }

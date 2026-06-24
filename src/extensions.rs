@@ -1,8 +1,12 @@
-use std::{env, io::{self, Read, Write}, path::Path, process::{Command, Stdio}};
+use std::{
+    env,
+    io::{self, Read, Write},
+    process::{Command, Stdio},
+};
 
 pub fn run(key: &str, input: &str, file: &str, row: usize, col: usize) -> io::Result<String> {
-    let home = env::var("HOME").map_err(|_| io::Error::new(io::ErrorKind::Other, "HOME not set"))?;
-    let ext_dir = format!("{}/.config/editor/extensions", home);
+    let home = env::var("HOME").map_err(|_| io::Error::other("HOME not set"))?;
+    let ext_dir = format!("{}/.config/catbath/extensions", home);
 
     // Find a script that matches the key (e.g., F1, F2)
     let script = std::fs::read_dir(&ext_dir)?
