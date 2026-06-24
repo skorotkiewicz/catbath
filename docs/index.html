@@ -323,6 +323,7 @@
       <nav aria-label="sections">
         <a href="#install">install</a>
         <a href="#keys">keys</a>
+        <a href="#syntax">syntax</a>
         <a href="#extensions">extensions</a>
         <a href="https://github.com/skorotkiewicz/catbath">source</a>
       </nav>
@@ -397,6 +398,29 @@
             <div class="key"><code>F1..F12</code><span>run extension</span></div>
             <div class="key"><code>mouse</code><span>click + scroll</span></div>
           </div>
+        </div>
+      </section>
+
+      <section id="syntax">
+        <div class="section-inner">
+          <h2>syntax goggles</h2>
+          <div class="grid">
+            <div class="tile">
+              <b>tiny config</b>
+              <p>Syntax files are plain text: keywords, types, comments, and string delimiter.</p>
+            </div>
+            <div class="tile">
+              <b>local first</b>
+              <p>Put overrides in <code>~/.config/catbath/syntax</code>.</p>
+            </div>
+            <div class="tile">
+              <b>packaged defaults</b>
+              <p>catbath also checks <code>/usr/share/catbath/syntax</code>.</p>
+            </div>
+          </div>
+          <pre class="code"><span class="dim"># Python-ish goggles</span>
+<span class="cyan">$</span> mkdir -p ~/.config/catbath/syntax
+<span class="cyan">$</span> printf '%s\n' 'keywords: def class return import if else' 'comment: #' 'string: "' &gt; ~/.config/catbath/syntax/py</pre>
         </div>
       </section>
 
