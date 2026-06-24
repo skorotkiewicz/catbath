@@ -144,6 +144,7 @@ pub fn run(path: &str) -> io::Result<()> {
 
     let mut searching = false;
     let mut q = String::new();
+    let mut last_search = String::new();
 
     loop {
         if event::poll(Duration::from_millis(100))? {
@@ -160,14 +161,20 @@ pub fn run(path: &str) -> io::Result<()> {
                             }
                             KeyCode::Enter => {
                                 searching = false;
-                                if !q.is_empty() {
-                                    ed.find_next(&q);
+                                let query = if q.is_empty() { &last_search } else { &q };
+                                if !query.is_empty() {
+                                    ed.find_next(query);
+                                    last_search = query.to_string();
                                 }
                                 q.clear();
                             }
                             KeyCode::Backspace => {
                                 q.pop();
-                                ed.message = Some(format!("search: {} (Enter=go, Esc=cancel)", q));
+                                ed.message = Some(if q.is_empty() && !last_search.is_empty() {
+                                    format!("search: [{}] (Enter=go, Esc=cancel)", last_search)
+                                } else {
+                                    format!("search: {} (Enter=go, Esc=cancel)", q)
+                                });
                             }
                             KeyCode::Char(c) if !c.is_control() => {
                                 q.push(c);
@@ -187,8 +194,14 @@ pub fn run(path: &str) -> io::Result<()> {
                             (KeyCode::Char('f'), KeyModifiers::CONTROL) => {
                                 searching = true;
                                 q.clear();
-                                ed.message =
-                                    Some("search query: (type + Enter to find next)".into());
+                                ed.message = Some(if last_search.is_empty() {
+                                    "search query: (type + Enter to find next)".into()
+                                } else {
+                                    format!(
+                                        "search: [{}] (Enter=go, type=new, Esc=cancel)",
+                                        last_search
+                                    )
+                                });
                             }
                             (KeyCode::Char(c), _) if !c.is_control() => ed.insert_char(c),
                             (KeyCode::Backspace, _) => ed.delete_char(),
