@@ -9,6 +9,7 @@ pub struct Editor {
     pub scroll: usize,
     pub file_path: PathBuf,
     pub modified: bool,
+    pub last_op_was_cut: bool,
     pub undo_stack: Vec<(Vec<String>, usize, usize)>,
     pub message: Option<String>,
     pub clip_lines: Vec<String>,
@@ -33,6 +34,7 @@ impl Editor {
             scroll: 0,
             file_path: path,
             modified: false,
+            last_op_was_cut: false,
             undo_stack: Vec::with_capacity(30),
             clip_lines: Vec::new(),
             message: Some("^x quit | ^w save | ^z undo | ^k cut | ^u paste | ^f search | click or scroll with mouse".to_string()),
@@ -239,35 +241,45 @@ impl Editor {
     }
 
     pub fn cut_line(&mut self) {
-        if self.cursor_row >= self.lines.len() {
-            return;
+        if self.cursor_row >= self.lines.len() { return; }
+
+        // If the last action wasn't a cut, clear the clipboard to start a new block.
+        if !self.last_op_was_cut {
+            self.clip_lines.clear();
         }
-        let line = self.lines[self.cursor_row].clone();
-        self.clip_lines.push(line);
-        if self.cursor_row + 1 < self.lines.len() {
-            self.lines[self.cursor_row] = self.lines.remove(self.cursor_row + 1);
+
+        // Zero-clone cut: pull the String straight out of the Vec.
+        let line = if self.lines.len() > 1 {
+            self.lines.remove(self.cursor_row)
         } else {
-            self.lines.remove(self.cursor_row);
-            if self.lines.is_empty() {
-                self.lines.push("".to_string());
-                self.cursor_row = 0;
-            }
+            std::mem::take(&mut self.lines[0])
+        };
+
+        self.clip_lines.push(line);
+
+        // Clamp cursor if we cut the last line
+        if self.cursor_row >= self.lines.len() {
+            self.cursor_row = self.lines.len() - 1;
         }
+
         self.cursor_col = 0;
         self.modified = true;
+        self.last_op_was_cut = true; // We are in a cut sequence
     }
 
     pub fn paste(&mut self) {
-        if self.clip_lines.is_empty() {
-            return;
-        }
+        if self.clip_lines.is_empty() { return; }
         self.push_undo();
-        for (i, line) in self.clip_lines.iter().enumerate() {
-            self.lines.insert(self.cursor_row + i, line.clone());
-        }
+
+        // O(N) block insertion
+        self.lines.splice(
+            self.cursor_row..self.cursor_row,
+            self.clip_lines.iter().cloned()
+        );
+
         self.cursor_row += self.clip_lines.len();
         self.cursor_col = 0;
-        // Keep clip_lines for repeated paste
         self.modified = true;
+        self.last_op_was_cut = false; // Pasting breaks the cut sequence
     }
 }
