@@ -1,116 +1,84 @@
-use std::io::{self, Read, Write};
-use std::net::{TcpListener, TcpStream};
-use std::path::{Path, PathBuf};
-
 use crate::core::Editor;
+use std::io::{Read, Write};
+use std::net::TcpListener;
 
-pub fn run(path: &str) -> io::Result<()> {
-    let path = PathBuf::from(path);
-    let mut ed = Editor::new(path.clone())?;
+const HTML: &str = include_str!("editor.html");
 
-    let listener = TcpListener::bind("127.0.0.1:0")?;
-    let addr = listener.local_addr()?;
-    let url = format!("http://{}", addr);
+pub fn run(file: &str) -> std::io::Result<()> {
+    let l = TcpListener::bind("127.0.0.1:0")?;
+    let port = l.local_addr()?.port();
+    let url = format!("http://127.0.0.1:{port}");
+    eprintln!("listening on {url}");
+    open_browser(&url);
+    serve(l, file.to_string())
+}
 
-    println!(":: web editor ready at: {}", url);
-    println!(" file: {}", path.display());
-    println!(" (browser should open automatically. use ctrl+c to stop when finished editing)");
+pub fn serve(l: TcpListener, file: String) -> std::io::Result<()> {
+    for stream in l.incoming() {
+        let mut s = stream?;
+        let mut buf = [0u8; 8192];
+        let n = s.read(&mut buf)?;
+        let req = String::from_utf8_lossy(&buf[..n]).into_owned();
+        let (method, path) = req
+            .lines()
+            .next()
+            .and_then(|l| {
+                let mut p = l.split_whitespace();
+                Some((p.next()?, p.next()?))
+            })
+            .unwrap_or(("", ""));
 
-    // Best effort open browser
-    let _ = std::process::Command::new(if cfg!(target_os = "macos") {
-        "open"
-    } else if cfg!(target_os = "windows") {
-        "cmd"
-    } else {
-        "xdg-open"
-    })
-    .args(if cfg!(target_os = "windows") {
-        vec!["/C", "start", url.as_str()]
-    } else {
-        vec![url.as_str()]
-    })
-    .spawn();
+        let cl: usize = req
+            .lines()
+            .find(|l| l.to_ascii_lowercase().starts_with("content-length:"))
+            .and_then(|l| l.split(':').nth(1))
+            .and_then(|s| s.trim().parse().ok())
+            .unwrap_or(0);
 
-    for s in listener.incoming().flatten() {
-        if let Err(e) = handle_http(s, &mut ed, &path) {
-            eprintln!("http err: {}", e);
+        let body_start = req.find("\r\n\r\n").map(|i| i + 4).unwrap_or(n);
+        let mut body = buf[body_start..n].to_vec();
+        while body.len() < cl {
+            let m = s.read(&mut buf)?;
+            if m == 0 {
+                break;
+            }
+            body.extend_from_slice(&buf[..m]);
         }
+
+        let (code, ct, b) = match (method, path) {
+            ("GET", p) if p == "/" || p.starts_with("/?") => {
+                let content = Editor::load(&file).unwrap_or_default();
+                // Lazy escaping: only & and <. This is 100% safe for <textarea>.
+                let esc_content = content.replace('&', "&amp;").replace('<', "&lt;");
+                let esc_fname = file.replace('<', "&lt;");
+
+                let html = HTML
+                    .replace("{fname}", &esc_fname)
+                    .replace("{content}", &esc_content);
+
+                ("200 OK", "text/html; charset=utf-8", html.into_bytes())
+            }
+            ("POST", p) if p.starts_with("/save") => {
+                let _ = Editor::save_to(&file, std::str::from_utf8(&body).unwrap_or(""));
+                ("200 OK", "text/plain", b"ok".to_vec())
+            }
+            _ => ("404 Not Found", "text/plain", b"404".to_vec()),
+        };
+
+        let h = format!(
+            "HTTP/1.1 {code}\r\nContent-Type: {ct}\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n",
+            b.len()
+        );
+        s.write_all(h.as_bytes())?;
+        s.write_all(&b)?;
+        s.flush()?;
     }
     Ok(())
 }
 
-fn handle_http(mut stream: TcpStream, ed: &mut Editor, file_path: &Path) -> io::Result<()> {
-    let mut buf = [0; 8192];
-    let n = stream.read(&mut buf)?;
-    let req_str = String::from_utf8_lossy(&buf[0..n]);
-
-    if req_str.starts_with("POST /save") {
-        if let Some(body_idx) = req_str.find("\r\n\r\n") {
-            let new_text = req_str[body_idx + 4..].to_string();
-            ed.lines = if new_text.trim().is_empty() {
-                vec!["".into()]
-            } else {
-                new_text.lines().map(str::to_string).collect()
-            };
-            ed.modified = true;
-            let _ = ed.save();
-        }
-        let r = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nOK";
-        stream.write_all(r.as_bytes())?;
-        return Ok(());
-    }
-
-    // Serve plain HTML editor
-    let fname = file_path
-        .file_name()
-        .and_then(|s: &std::ffi::OsStr| s.to_str())
-        .unwrap_or("document.txt");
-    let content = ed
-        .lines
-        .join("\n")
-        .replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;");
-
-    let html = format!(
-        r#"<!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>editor: {fname}</title>
-<style>
-body{{margin:0;background:#111;color:#eee;font-family:monospace;height:100vh;display:flex;flex-direction:column}}
-textarea{{flex:1;border:0;outline:0;background:#111;color:#eee;}}
-</style>
-</head>
-<body>
-<div style="padding:5px 10px;background:#222">
-<b>editor</b> - {fname}
-<button onclick="doSave()" style="margin-left:10px">Save</button>
-<span style="color:#888;font-size:12px" id="saved">(ctrl+e to save)</span>
-</div>
-<textarea id="ed" spellcheck="false">{content}</textarea>
-<script>
-function doSave(){{
-  fetch('/save',{{method:'POST',body:document.getElementById('ed').value}})
-    .then(()=>{{
-      let s=document.getElementById('saved');
-      s.textContent='saved';
-      setTimeout(()=>s.textContent='(ctrl+e to save)',650);
-    }});
-}}
-document.addEventListener('keydown',e=>{{
-  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='e'){{
-    e.preventDefault();
-    doSave();
-  }}
-}});
-</script>
-</body></html>"#
-    );
-
-    let resp = format!(
-        "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\n\r\n{}",
-        html.len(),
-        html
-    );
-    stream.write_all(resp.as_bytes())?;
-    Ok(())
+#[rustfmt::skip]
+fn open_browser(url: &str) {
+    #[cfg(target_os = "macos")]  { let _ = std::process::Command::new("open").arg(url).spawn(); }
+    #[cfg(target_os = "linux")]  { let _ = std::process::Command::new("xdg-open").arg(url).spawn(); }
+    #[cfg(target_os = "windows")] { let _ = std::process::Command::new("cmd").args(["/C","start",url]).spawn(); }
 }
