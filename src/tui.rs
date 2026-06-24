@@ -32,7 +32,7 @@ pub fn render(editor: &Editor, stdout: &mut io::Stdout, width: u16, height: u16)
         .and_then(|n| n.to_str())
         .unwrap_or("untitled");
     let top = format!(
-        " {} {}  •  {}  •  ctrl+q quit  ctrl+s save  ctrl+z undo  ctrl+f search",
+        " {} {}  •  {}  •  ctrl+c quit  ctrl+s save  ctrl+z undo  ctrl+f search",
         fname,
         if editor.modified { "(*)" } else { "" },
         editor.file_path.display()
@@ -175,7 +175,7 @@ pub fn run(path: &str) -> io::Result<()> {
                         }
                     } else {
                         match (code, modifiers) {
-                            (KeyCode::Char('q'), KeyModifiers::CONTROL) => break,
+                            (KeyCode::Char('c'), KeyModifiers::CONTROL) => break,
                             (KeyCode::Char('s'), KeyModifiers::CONTROL) => {
                                 let _ = ed.save();
                             }

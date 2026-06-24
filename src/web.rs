@@ -46,18 +46,7 @@ fn handle_http(mut stream: TcpStream, ed: &mut Editor, file_path: &Path) -> io::
 
     if req_str.starts_with("POST /save") {
         if let Some(body_idx) = req_str.find("\r\n\r\n") {
-            let body = &req_str[body_idx + 4..];
-            // Parse content=... (urlencoded)
-            let new_text = if let Some(p) = body.find("content=") {
-                let val = &body[p + 8..];
-                // Minimal decode for common cases
-                val.replace("%0A", "\n")
-                    .replace("%0D", "")
-                    .replace('+', " ")
-                    .replace("%20", " ")
-            } else {
-                body.to_string()
-            };
+            let new_text = req_str[body_idx + 4..].to_string();
             ed.lines = if new_text.trim().is_empty() {
                 vec!["".into()]
             } else {
@@ -92,16 +81,25 @@ textarea{{flex:1;border:0;outline:0;background:#111;color:#eee;}}
 </style>
 </head>
 <body>
-<div style="padding:5px 10px;background:#222;color:#8f8">
-<b>editor</b> - {fname} <span style="color:#888;font-size:12px">(ctrl+s to save)</span>
+<div style="padding:5px 10px;background:#222">
+<b>editor</b> - {fname}
+<button onclick="doSave()" style="margin-left:10px">Save</button>
+<span style="color:#888;font-size:12px" id="saved">(ctrl+e to save)</span>
 </div>
 <textarea id="ed" spellcheck="false">{content}</textarea>
 <script>
-document.getElementById('ed').addEventListener('keydown',e={{
-  if((e.ctrlKey||e.metaKey)&&e.key==='s'){{
+function doSave(){{
+  fetch('/save',{{method:'POST',body:document.getElementById('ed').value}})
+    .then(()=>{{
+      let s=document.getElementById('saved');
+      s.textContent='saved';
+      setTimeout(()=>s.textContent='(ctrl+e to save)',650);
+    }});
+}}
+document.addEventListener('keydown',e=>{{
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='e'){{
     e.preventDefault();
-    fetch('/save',{{method:'POST',body:'content='+encodeURIComponent(document.getElementById('ed').value)}})
-      .then(()=>alert('saved'));
+    doSave();
   }}
 }});
 </script>
