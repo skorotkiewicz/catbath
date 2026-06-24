@@ -30,9 +30,7 @@ fn main() {
     match mode {
         "tui" => tui::run(file).unwrap(),
         "gui" => {
-            println!(
-                "GUI mode: TUI provided instead (modern terminals = GUI)"
-            );
+            println!("GUI mode: TUI provided instead (modern terminals = GUI)");
             tui::run(file).unwrap()
         }
         "web" => web::run(file).unwrap(),
