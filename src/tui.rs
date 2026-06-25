@@ -143,6 +143,7 @@ pub fn run(path: &str) -> io::Result<()> {
     render(&ed, &mut stdout, w, h)?;
 
     let mut searching = false;
+    let mut confirming_quit = false;
     let mut q = String::new();
     let mut last_search = String::new();
 
@@ -152,7 +153,24 @@ pub fn run(path: &str) -> io::Result<()> {
                 Event::Key(KeyEvent {
                     code, modifiers, ..
                 }) => {
-                    if searching {
+                    if confirming_quit {
+                        match code {
+                            KeyCode::Char('y') | KeyCode::Char('Y') => {
+                                if save_before_quit(&mut ed) {
+                                    break;
+                                }
+                                confirming_quit = false;
+                            }
+                            KeyCode::Char('n') | KeyCode::Char('N') => break,
+                            KeyCode::Esc => {
+                                confirming_quit = false;
+                                ed.message = Some("quit cancelled".into());
+                            }
+                            _ => {
+                                ed.message = Some("save modified file before exit? (y/n)".into());
+                            }
+                        }
+                    } else if searching {
                         match code {
                             KeyCode::Esc => {
                                 searching = false;
@@ -184,7 +202,15 @@ pub fn run(path: &str) -> io::Result<()> {
                         }
                     } else {
                         match (code, modifiers) {
-                            (KeyCode::Char('x'), KeyModifiers::CONTROL) => break,
+                            (KeyCode::Char('x'), KeyModifiers::CONTROL) => {
+                                if ed.modified {
+                                    confirming_quit = true;
+                                    ed.message =
+                                        Some("save modified file before exit? (y/n)".into());
+                                } else {
+                                    break;
+                                }
+                            }
                             (KeyCode::Char('w'), KeyModifiers::CONTROL) => {
                                 let _ = ed.save();
                             }
@@ -298,8 +324,15 @@ pub fn run(path: &str) -> io::Result<()> {
         DisableMouseCapture
     )?;
     terminal::disable_raw_mode()?;
-    if ed.modified {
-        println!("file: `{}` had unsaved changes", ed.file_path.display());
-    }
     Ok(())
+}
+
+fn save_before_quit(ed: &mut Editor) -> bool {
+    match ed.save() {
+        Ok(()) => true,
+        Err(e) => {
+            ed.message = Some(format!("save err: {}", e));
+            false
+        }
+    }
 }
