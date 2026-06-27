@@ -46,7 +46,7 @@ impl Editor {
             last_op_was_cut: false,
             undo_stack: Vec::with_capacity(30),
             clip_lines: Vec::new(),
-            message: Some("^x quit | ^w save | ^z undo | ^k cut | ^u paste | ^f search | click or scroll with mouse".to_string()),
+            message: Some("catbath".to_string()),
             syntax,
         })
     }
