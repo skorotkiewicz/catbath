@@ -26,7 +26,7 @@ pub fn render(
     height: u16,
     show_line_numbers: bool,
 ) -> io::Result<()> {
-    queue!(stdout, Clear(ClearType::All))?;
+    queue!(stdout, Hide)?;
 
     let vis = (height as usize).saturating_sub(2).max(1);
     let start = editor.scroll;
@@ -53,6 +53,7 @@ pub fn render(
     queue!(
         stdout,
         MoveTo(0, 0),
+        Clear(ClearType::CurrentLine),
         SetBackgroundColor(Color::Rgb {
             r: 20,
             g: 40,
@@ -67,8 +68,20 @@ pub fn render(
     }
 
     // Lines
-    for (i, idx) in (start..end).enumerate() {
+    for i in 0..vis {
         let y = i as u16 + 1;
+        queue!(
+            stdout,
+            MoveTo(0, y),
+            ResetColor,
+            Clear(ClearType::CurrentLine)
+        )?;
+
+        let idx = start + i;
+        if idx >= end {
+            continue;
+        }
+
         if show_line_numbers {
             let ln = format!(" {:>4} ", idx + 1);
             queue!(
@@ -90,8 +103,13 @@ pub fn render(
         editor.render_line(stdout, disp)?;
     }
 
-    // Bottom bar
-    let status = if let Some(m) = &editor.message {
+    queue_status_and_cursor(editor, stdout, width, height, show_line_numbers)?;
+    stdout.flush()?;
+    Ok(())
+}
+
+fn status(editor: &Editor) -> String {
+    if let Some(m) = &editor.message {
         format!(
             " {}  |  Ln {}:{}  |  {} lines",
             m,
@@ -107,7 +125,17 @@ pub fn render(
             editor.lines.len(),
             if editor.modified { "modified" } else { "clean" }
         )
-    };
+    }
+}
+
+fn queue_status_and_cursor(
+    editor: &Editor,
+    stdout: &mut io::Stdout,
+    width: u16,
+    height: u16,
+    show_line_numbers: bool,
+) -> io::Result<()> {
+    let status = status(editor);
     let st = if status.len() > width as usize {
         &status[..width as usize]
     } else {
@@ -116,20 +144,31 @@ pub fn render(
     queue!(
         stdout,
         MoveTo(0, height - 1),
+        Clear(ClearType::CurrentLine),
         SetBackgroundColor(Color::DarkGrey),
         SetForegroundColor(Color::White),
         Print(st),
         ResetColor
     )?;
 
-    // Cursor position
+    let gutter = if show_line_numbers { 7 } else { 0 };
     let cy = 1u16 + (editor.cursor_row - editor.scroll) as u16;
     let cx = gutter as u16 + editor.cursor_col as u16;
     if cy < height - 1 {
         queue!(stdout, MoveTo(cx, cy), Show)?;
     }
-    stdout.flush()?;
     Ok(())
+}
+
+fn render_status_and_cursor(
+    editor: &Editor,
+    stdout: &mut io::Stdout,
+    width: u16,
+    height: u16,
+    show_line_numbers: bool,
+) -> io::Result<()> {
+    queue_status_and_cursor(editor, stdout, width, height, show_line_numbers)?;
+    stdout.flush()
 }
 
 pub fn run(path: &str) -> io::Result<()> {
@@ -163,6 +202,9 @@ pub fn run(path: &str) -> io::Result<()> {
                 Event::Key(KeyEvent {
                     code, modifiers, ..
                 }) => {
+                    let before_move = (ed.cursor_row, ed.cursor_col, ed.scroll);
+                    let mut cursor_move = false;
+
                     if confirming_quit {
                         match code {
                             KeyCode::Char('y') | KeyCode::Char('Y') => {
@@ -251,12 +293,30 @@ pub fn run(path: &str) -> io::Result<()> {
                             (KeyCode::Backspace, _) => ed.delete_char(),
                             (KeyCode::Delete, _) => ed.delete_forward(),
                             (KeyCode::Enter, _) => ed.insert_newline(),
-                            (KeyCode::Up, _) => ed.move_up(),
-                            (KeyCode::Down, _) => ed.move_down(),
-                            (KeyCode::Left, _) => ed.move_left(),
-                            (KeyCode::Right, _) => ed.move_right(),
-                            (KeyCode::Home, _) => ed.move_home(),
-                            (KeyCode::End, _) => ed.move_end(),
+                            (KeyCode::Up, _) => {
+                                ed.move_up();
+                                cursor_move = true;
+                            }
+                            (KeyCode::Down, _) => {
+                                ed.move_down();
+                                cursor_move = true;
+                            }
+                            (KeyCode::Left, _) => {
+                                ed.move_left();
+                                cursor_move = true;
+                            }
+                            (KeyCode::Right, _) => {
+                                ed.move_right();
+                                cursor_move = true;
+                            }
+                            (KeyCode::Home, _) => {
+                                ed.move_home();
+                                cursor_move = true;
+                            }
+                            (KeyCode::End, _) => {
+                                ed.move_end();
+                                cursor_move = true;
+                            }
                             (KeyCode::PageUp, _) => ed.page_up(vis),
                             (KeyCode::PageDown, _) => ed.page_down(vis),
                             (KeyCode::Tab, _) => {
@@ -301,7 +361,19 @@ pub fn run(path: &str) -> io::Result<()> {
                         }
                     }
                     ed.adjust_scroll(vis);
-                    render(&ed, &mut stdout, w, h, show_line_numbers)?;
+                    let after_move = (ed.cursor_row, ed.cursor_col, ed.scroll);
+                    if cursor_move {
+                        if after_move == before_move {
+                            continue;
+                        }
+                        if after_move.2 == before_move.2 {
+                            render_status_and_cursor(&ed, &mut stdout, w, h, show_line_numbers)?;
+                        } else {
+                            render(&ed, &mut stdout, w, h, show_line_numbers)?;
+                        }
+                    } else {
+                        render(&ed, &mut stdout, w, h, show_line_numbers)?;
+                    }
                 }
                 Event::Mouse(m) => {
                     let gutter = if show_line_numbers { 7 } else { 0 };
