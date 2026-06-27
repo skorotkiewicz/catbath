@@ -12,7 +12,7 @@ impl Syntax {
     pub fn load(file: &str) -> Option<Self> {
         let ext = Path::new(file).extension()?.to_str()?;
         if let Ok(home) = std::env::var("HOME") {
-            let path = format!("{}/.config/catbath/syntax/{}", home, ext);
+            let path = format!("{}/.config/catbath/syntax/{}.tty", home, ext);
             if let Ok(content) = std::fs::read_to_string(path) {
                 return Some(Self::parse(&content));
             }
@@ -20,7 +20,7 @@ impl Syntax {
 
         for path in [
             format!("syntax/{}", ext),
-            format!("/usr/share/catbath/syntax/{}", ext),
+            format!("/usr/share/catbath/syntax/{}.tty", ext),
         ] {
             if let Ok(content) = std::fs::read_to_string(path) {
                 return Some(Self::parse(&content));
