@@ -32,14 +32,19 @@ doSave();
 }
 });
 function runExt(key) {
+const input = ed.value;
 st.textContent = 'running ' + key + '...';
-fetch('/ext/' + key, {method:'POST', body: ed.value})
+fetch('/ext/' + key, {method:'POST', body: input})
 .then(res => {
 if (!res.ok) throw new Error('extension failed');
 return res.text();
 })
 .then(newText => {
-const changed = newText !== ed.value;
+if (ed.value !== input) {
+st.textContent = key + ' done; buffer changed';
+return;
+}
+const changed = newText !== input;
 ed.value = newText;
 st.textContent = changed ? key + ' applied' : key + ' returned no changes';
 })

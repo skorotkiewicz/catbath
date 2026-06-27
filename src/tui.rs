@@ -1,5 +1,7 @@
 use std::io::{self, Write};
 use std::path::PathBuf;
+use std::sync::mpsc::{self, Receiver};
+use std::thread;
 use std::time::Duration;
 
 use crossterm::{
@@ -19,6 +21,26 @@ use crossterm::{
 use crate::core::Editor;
 use crate::extensions;
 
+struct PendingExt {
+    key: String,
+    input: String,
+    rx: Receiver<io::Result<String>>,
+}
+
+fn gutter(show_line_numbers: bool) -> usize {
+    if show_line_numbers { 7 } else { 0 }
+}
+
+fn text_width(width: u16, show_line_numbers: bool) -> usize {
+    (width as usize).saturating_sub(gutter(show_line_numbers))
+}
+
+fn hscroll(editor: &Editor, width: u16, show_line_numbers: bool) -> usize {
+    editor
+        .cursor_col
+        .saturating_sub(text_width(width, show_line_numbers).saturating_sub(1))
+}
+
 pub fn render(
     editor: &Editor,
     stdout: &mut io::Stdout,
@@ -31,7 +53,9 @@ pub fn render(
     let vis = (height as usize).saturating_sub(2).max(1);
     let start = editor.scroll;
     let end = (start + vis).min(editor.lines.len());
-    let gutter = if show_line_numbers { 7 } else { 0 };
+    let gutter = gutter(show_line_numbers);
+    let maxc = text_width(width, show_line_numbers);
+    let hscroll = hscroll(editor, width, show_line_numbers);
 
     // Top bar
     let fname = editor
@@ -53,37 +77,32 @@ pub fn render(
     queue!(
         stdout,
         MoveTo(0, 0),
-        Clear(ClearType::CurrentLine),
         SetBackgroundColor(Color::Rgb {
             r: 20,
             g: 40,
             b: 80
         }),
         SetForegroundColor(Color::White),
-        Print(top),
-        ResetColor
+        Print(top)
     )?;
     if top.len() < width as usize {
         queue!(stdout, Print(" ".repeat(width as usize - top.len())))?;
     }
+    queue!(stdout, ResetColor)?;
 
     // Lines
     for i in 0..vis {
         let y = i as u16 + 1;
-        queue!(
-            stdout,
-            MoveTo(0, y),
-            ResetColor,
-            Clear(ClearType::CurrentLine)
-        )?;
+        queue!(stdout, MoveTo(0, y), ResetColor)?;
 
         let idx = start + i;
         if idx >= end {
+            queue!(stdout, Clear(ClearType::UntilNewLine))?;
             continue;
         }
 
         if show_line_numbers {
-            let ln = format!(" {:>4} ", idx + 1);
+            let ln = format!(" {:>4}  ", idx + 1);
             queue!(
                 stdout,
                 MoveTo(0, y),
@@ -93,23 +112,38 @@ pub fn render(
             )?;
         }
         let line = &editor.lines[idx];
-        let maxc = (width as usize).saturating_sub(gutter);
-        let disp = if line.len() > maxc {
-            &line[..maxc]
+        let disp = if maxc == 0 || hscroll >= line.len() {
+            ""
+        } else if line.len() > hscroll + maxc {
+            &line[hscroll..hscroll + maxc]
         } else {
-            line
+            &line[hscroll..]
         };
         queue!(stdout, MoveTo(gutter as u16, y))?;
         editor.render_line(stdout, disp)?;
+        queue!(stdout, ResetColor, Clear(ClearType::UntilNewLine))?;
     }
 
-    queue_status_and_cursor(editor, stdout, width, height, show_line_numbers)?;
+    queue_status(editor, stdout, width, height)?;
+
+    // Cursor position
+    let cy = 1u16 + (editor.cursor_row - editor.scroll) as u16;
+    let cx = gutter + editor.cursor_col.saturating_sub(hscroll);
+    if cy < height - 1 && cx < width as usize {
+        let cx = cx as u16;
+        queue!(stdout, MoveTo(cx, cy), Show)?;
+    }
     stdout.flush()?;
     Ok(())
 }
 
-fn status(editor: &Editor) -> String {
-    if let Some(m) = &editor.message {
+fn queue_status(
+    editor: &Editor,
+    stdout: &mut io::Stdout,
+    width: u16,
+    height: u16,
+) -> io::Result<()> {
+    let status = if let Some(m) = &editor.message {
         format!(
             " {}  |  Ln {}:{}  |  {} lines",
             m,
@@ -125,17 +159,7 @@ fn status(editor: &Editor) -> String {
             editor.lines.len(),
             if editor.modified { "modified" } else { "clean" }
         )
-    }
-}
-
-fn queue_status_and_cursor(
-    editor: &Editor,
-    stdout: &mut io::Stdout,
-    width: u16,
-    height: u16,
-    show_line_numbers: bool,
-) -> io::Result<()> {
-    let status = status(editor);
+    };
     let st = if status.len() > width as usize {
         &status[..width as usize]
     } else {
@@ -144,31 +168,35 @@ fn queue_status_and_cursor(
     queue!(
         stdout,
         MoveTo(0, height - 1),
-        Clear(ClearType::CurrentLine),
         SetBackgroundColor(Color::DarkGrey),
         SetForegroundColor(Color::White),
-        Print(st),
-        ResetColor
+        Print(st)
     )?;
-
-    let gutter = if show_line_numbers { 7 } else { 0 };
-    let cy = 1u16 + (editor.cursor_row - editor.scroll) as u16;
-    let cx = gutter as u16 + editor.cursor_col as u16;
-    if cy < height - 1 {
-        queue!(stdout, MoveTo(cx, cy), Show)?;
+    if st.len() < width as usize {
+        queue!(stdout, Print(" ".repeat(width as usize - st.len())))?;
     }
+    queue!(stdout, ResetColor)?;
     Ok(())
 }
 
-fn render_status_and_cursor(
+fn render_cursor(
     editor: &Editor,
     stdout: &mut io::Stdout,
     width: u16,
     height: u16,
     show_line_numbers: bool,
 ) -> io::Result<()> {
-    queue_status_and_cursor(editor, stdout, width, height, show_line_numbers)?;
-    stdout.flush()
+    let gutter = gutter(show_line_numbers);
+    let hscroll = hscroll(editor, width, show_line_numbers);
+    queue_status(editor, stdout, width, height)?;
+    let cy = 1u16 + (editor.cursor_row - editor.scroll) as u16;
+    let cx = gutter + editor.cursor_col.saturating_sub(hscroll);
+    if cy < height - 1 && cx < width as usize {
+        let cx = cx as u16;
+        queue!(stdout, MoveTo(cx, cy), Show)?;
+        stdout.flush()?;
+    }
+    Ok(())
 }
 
 pub fn run(path: &str) -> io::Result<()> {
@@ -195,14 +223,31 @@ pub fn run(path: &str) -> io::Result<()> {
     let mut confirming_quit = false;
     let mut q = String::new();
     let mut last_search = String::new();
+    let mut pending_ext: Option<PendingExt> = None;
 
     loop {
+        if let Some(job) = pending_ext.take() {
+            match job.rx.try_recv() {
+                Ok(result) => {
+                    finish_ext(&mut ed, &job.key, &job.input, result);
+                    ed.adjust_scroll(vis);
+                    render(&ed, &mut stdout, w, h, show_line_numbers)?;
+                }
+                Err(mpsc::TryRecvError::Empty) => pending_ext = Some(job),
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    ed.message = Some(format!("ext err: {} worker stopped", job.key));
+                    render(&ed, &mut stdout, w, h, show_line_numbers)?;
+                }
+            }
+        }
+
         if event::poll(Duration::from_millis(100))? {
             match event::read()? {
                 Event::Key(KeyEvent {
                     code, modifiers, ..
                 }) => {
                     let before_move = (ed.cursor_row, ed.cursor_col, ed.scroll);
+                    let before_hscroll = hscroll(&ed, w, show_line_numbers);
                     let mut cursor_move = false;
 
                     if confirming_quit {
@@ -325,49 +370,45 @@ pub fn run(path: &str) -> io::Result<()> {
                                 }
                             }
                             (KeyCode::F(n), _) => {
+                                if pending_ext.is_some() {
+                                    ed.message = Some("extension already running".into());
+                                    continue;
+                                }
+
                                 let key = format!("F{}", n);
                                 let input = ed.lines.join("\n");
+                                let file = ed.file_path.to_string_lossy().into_owned();
+                                let row = ed.cursor_row;
+                                let col = ed.cursor_col;
 
                                 ed.message = Some(format!("running {}...", key));
-                                render(&ed, &mut stdout, w, h, show_line_numbers).ok();
-
-                                let file = ed.file_path.to_string_lossy();
-                                match extensions::run(
-                                    &key,
-                                    &input,
-                                    &file,
-                                    ed.cursor_row,
-                                    ed.cursor_col,
-                                ) {
-                                    Ok(out) => {
-                                        if out != input {
-                                            ed.push_undo();
-                                            ed.lines = if out.is_empty() {
-                                                vec![String::new()]
-                                            } else {
-                                                out.split('\n').map(String::from).collect()
-                                            };
-                                            ed.modified = true;
-                                            ed.message = Some(format!("{} applied", key));
-                                        } else {
-                                            ed.message =
-                                                Some(format!("{} returned no changes", key));
-                                        }
-                                    }
-                                    Err(e) => ed.message = Some(format!("ext err: {}", e)),
-                                }
+                                let (tx, rx) = mpsc::channel();
+                                let thread_key = key.clone();
+                                let thread_input = input.clone();
+                                thread::spawn(move || {
+                                    let result = extensions::run(
+                                        &thread_key,
+                                        &thread_input,
+                                        &file,
+                                        row,
+                                        col,
+                                    );
+                                    let _ = tx.send(result);
+                                });
+                                pending_ext = Some(PendingExt { key, input, rx });
                             }
                             _ => {}
                         }
                     }
                     ed.adjust_scroll(vis);
                     let after_move = (ed.cursor_row, ed.cursor_col, ed.scroll);
+                    let after_hscroll = hscroll(&ed, w, show_line_numbers);
                     if cursor_move {
                         if after_move == before_move {
                             continue;
                         }
-                        if after_move.2 == before_move.2 {
-                            render_status_and_cursor(&ed, &mut stdout, w, h, show_line_numbers)?;
+                        if after_move.2 == before_move.2 && after_hscroll == before_hscroll {
+                            render_cursor(&ed, &mut stdout, w, h, show_line_numbers)?;
                         } else {
                             render(&ed, &mut stdout, w, h, show_line_numbers)?;
                         }
@@ -425,5 +466,75 @@ fn save_before_quit(ed: &mut Editor) -> bool {
             ed.message = Some(format!("save err: {}", e));
             false
         }
+    }
+}
+
+fn finish_ext(ed: &mut Editor, key: &str, input: &str, result: io::Result<String>) {
+    let out = match result {
+        Ok(out) => out,
+        Err(e) => {
+            ed.message = Some(format!("ext err: {}", e));
+            return;
+        }
+    };
+
+    if ed.lines.join("\n") != input {
+        ed.message = Some(if out == input {
+            format!("{} returned no changes", key)
+        } else {
+            format!("{} finished; buffer changed, ignored", key)
+        });
+        return;
+    }
+
+    if out == input {
+        ed.message = Some(format!("{} returned no changes", key));
+        return;
+    }
+
+    ed.push_undo();
+    ed.lines = if out.is_empty() {
+        vec![String::new()]
+    } else {
+        out.split('\n').map(String::from).collect()
+    };
+    ed.cursor_row = ed.cursor_row.min(ed.lines.len().saturating_sub(1));
+    ed.cursor_col = ed.cursor_col.min(ed.lines[ed.cursor_row].len());
+    ed.modified = true;
+    ed.message = Some(format!("{} applied", key));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn editor_with(text: &str) -> Editor {
+        Editor {
+            lines: text.split('\n').map(String::from).collect(),
+            cursor_row: 0,
+            cursor_col: 0,
+            scroll: 0,
+            file_path: PathBuf::from("test.txt"),
+            modified: false,
+            last_op_was_cut: false,
+            undo_stack: Vec::new(),
+            message: None,
+            clip_lines: Vec::new(),
+            syntax: None,
+        }
+    }
+
+    #[test]
+    fn extension_result_does_not_clobber_live_edits() {
+        let mut ed = editor_with("hello");
+        ed.lines = vec!["hello!".into()];
+
+        finish_ext(&mut ed, "F1", "hello", Ok("HELLO".into()));
+
+        assert_eq!(ed.lines, vec!["hello!"]);
+        assert_eq!(
+            ed.message.as_deref(),
+            Some("F1 finished; buffer changed, ignored")
+        );
     }
 }
