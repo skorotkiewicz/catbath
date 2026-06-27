@@ -26,6 +26,34 @@ pub struct Editor {
 }
 
 impl Editor {
+    pub(crate) fn floor_char_boundary(s: &str, mut col: usize) -> usize {
+        col = col.min(s.len());
+        while col > 0 && !s.is_char_boundary(col) {
+            col -= 1;
+        }
+        col
+    }
+
+    pub(crate) fn ceil_char_boundary(s: &str, mut col: usize) -> usize {
+        col = col.min(s.len());
+        while col < s.len() && !s.is_char_boundary(col) {
+            col += 1;
+        }
+        col
+    }
+
+    pub(crate) fn clamp_col(s: &str, col: usize) -> usize {
+        Self::floor_char_boundary(s, col)
+    }
+
+    pub(crate) fn next_char_boundary(s: &str, col: usize) -> usize {
+        let col = Self::ceil_char_boundary(s, col);
+        s[col..]
+            .chars()
+            .next()
+            .map_or(s.len(), |c| col + c.len_utf8())
+    }
+
     pub fn new(path: PathBuf) -> io::Result<Self> {
         let path_str = path.to_string_lossy();
         let content = Self::load(&path_str).unwrap_or_default();
@@ -124,8 +152,10 @@ impl Editor {
         if let Some((lines, row, col)) = self.undo_stack.pop() {
             self.lines = lines;
             self.cursor_row = row.min(self.lines.len().saturating_sub(1));
-            let llen = self.lines.get(self.cursor_row).map_or(0, |l| l.len());
-            self.cursor_col = col.min(llen);
+            self.cursor_col = self
+                .lines
+                .get(self.cursor_row)
+                .map_or(0, |line| Self::clamp_col(line, col));
             self.modified = true;
             self.message = Some("undid last change".to_string());
         } else {
@@ -198,9 +228,9 @@ impl Editor {
             self.lines.push(String::new());
         }
         let line = &mut self.lines[self.cursor_row];
-        let col = self.cursor_col.min(line.len());
+        let col = Self::clamp_col(line, self.cursor_col);
         line.insert(col, c);
-        self.cursor_col = col + 1;
+        self.cursor_col = col + c.len_utf8();
         self.modified = true;
         self.message = None;
     }
@@ -211,7 +241,7 @@ impl Editor {
             self.lines.push(String::new());
         }
         let line = &mut self.lines[self.cursor_row];
-        let col = self.cursor_col.min(line.len());
+        let col = Self::clamp_col(line, self.cursor_col);
         let rest = line.split_off(col);
         self.lines.insert(self.cursor_row + 1, rest);
         self.cursor_row += 1;
@@ -223,9 +253,13 @@ impl Editor {
         if self.cursor_col > 0 {
             self.push_undo();
             let line = &mut self.lines[self.cursor_row];
-            let col = self.cursor_col.min(line.len());
-            line.remove(col - 1);
-            self.cursor_col = col - 1;
+            let col = Self::ceil_char_boundary(line, self.cursor_col);
+            if let Some((prev, _)) = line[..col].char_indices().last() {
+                line.remove(prev);
+                self.cursor_col = prev;
+            } else {
+                self.cursor_col = 0;
+            }
             self.modified = true;
         } else if self.cursor_row > 0 {
             self.push_undo();
@@ -242,9 +276,11 @@ impl Editor {
         if self.cursor_row >= self.lines.len() {
             return;
         }
-        if self.cursor_col < self.lines[self.cursor_row].len() {
+        let col = Self::clamp_col(&self.lines[self.cursor_row], self.cursor_col);
+        self.cursor_col = col;
+        if col < self.lines[self.cursor_row].len() {
             self.push_undo();
-            self.lines[self.cursor_row].remove(self.cursor_col);
+            self.lines[self.cursor_row].remove(col);
             self.modified = true;
         } else if self.cursor_row + 1 < self.lines.len() {
             self.push_undo();
@@ -255,8 +291,10 @@ impl Editor {
     }
 
     pub fn move_left(&mut self) {
-        if self.cursor_col > 0 {
-            self.cursor_col -= 1;
+        if self.cursor_col > 0 && self.cursor_row < self.lines.len() {
+            let line = &self.lines[self.cursor_row];
+            let col = Self::clamp_col(line, self.cursor_col);
+            self.cursor_col = line[..col].char_indices().last().map_or(0, |(i, _)| i);
         } else if self.cursor_row > 0 {
             self.cursor_row -= 1;
             self.cursor_col = self.lines[self.cursor_row].len();
@@ -266,8 +304,9 @@ impl Editor {
     pub fn move_right(&mut self) {
         if self.cursor_row < self.lines.len() {
             let len = self.lines[self.cursor_row].len();
-            if self.cursor_col < len {
-                self.cursor_col += 1;
+            let col = Self::ceil_char_boundary(&self.lines[self.cursor_row], self.cursor_col);
+            if col < len {
+                self.cursor_col = Self::next_char_boundary(&self.lines[self.cursor_row], col);
             } else if self.cursor_row + 1 < self.lines.len() {
                 self.cursor_row += 1;
                 self.cursor_col = 0;
@@ -278,16 +317,14 @@ impl Editor {
     pub fn move_up(&mut self) {
         if self.cursor_row > 0 {
             self.cursor_row -= 1;
-            let len = self.lines[self.cursor_row].len();
-            self.cursor_col = self.cursor_col.min(len);
+            self.cursor_col = Self::clamp_col(&self.lines[self.cursor_row], self.cursor_col);
         }
     }
 
     pub fn move_down(&mut self) {
         if self.cursor_row + 1 < self.lines.len() {
             self.cursor_row += 1;
-            let len = self.lines[self.cursor_row].len();
-            self.cursor_col = self.cursor_col.min(len);
+            self.cursor_col = Self::clamp_col(&self.lines[self.cursor_row], self.cursor_col);
         }
     }
 
@@ -303,7 +340,7 @@ impl Editor {
     pub fn page_up(&mut self, vis: usize) {
         self.cursor_row = self.cursor_row.saturating_sub(vis.max(1));
         if self.cursor_row < self.lines.len() {
-            self.cursor_col = self.cursor_col.min(self.lines[self.cursor_row].len());
+            self.cursor_col = Self::clamp_col(&self.lines[self.cursor_row], self.cursor_col);
         }
         self.scroll = self.scroll.saturating_sub(vis.max(1));
     }
@@ -311,7 +348,7 @@ impl Editor {
     pub fn page_down(&mut self, vis: usize) {
         self.cursor_row = (self.cursor_row + vis.max(1)).min(self.lines.len().saturating_sub(1));
         if self.cursor_row < self.lines.len() {
-            self.cursor_col = self.cursor_col.min(self.lines[self.cursor_row].len());
+            self.cursor_col = Self::clamp_col(&self.lines[self.cursor_row], self.cursor_col);
         }
         self.scroll = (self.scroll + vis.max(1)).min(self.lines.len().saturating_sub(1));
     }
@@ -334,14 +371,17 @@ impl Editor {
         }
         let q = query.to_lowercase();
         let start_r = self.cursor_row;
-        let start_c = self.cursor_col + 1;
+        let start_c = self
+            .lines
+            .get(start_r)
+            .map_or(0, |line| Self::next_char_boundary(line, self.cursor_col));
 
         for r in start_r..self.lines.len() {
             let line = &self.lines[r];
             let from = if r == start_r { start_c } else { 0 };
             if let Some(p) = line.get(from..).unwrap_or("").to_lowercase().find(&q) {
                 self.cursor_row = r;
-                self.cursor_col = from + p;
+                self.cursor_col = Self::ceil_char_boundary(line, from + p);
                 self.message = Some(format!("found '{}'", query));
                 return true;
             }
@@ -353,7 +393,7 @@ impl Editor {
                     continue;
                 }
                 self.cursor_row = r;
-                self.cursor_col = p;
+                self.cursor_col = Self::ceil_char_boundary(line, p);
                 self.message = Some(format!("found '{}' (wrapped)", query));
                 return true;
             }
@@ -407,5 +447,52 @@ impl Editor {
         self.cursor_col = 0;
         self.modified = true;
         self.last_op_was_cut = false; // Pasting breaks the cut sequence
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn editor_with(text: &str) -> Editor {
+        Editor {
+            lines: text.split('\n').map(String::from).collect(),
+            cursor_row: 0,
+            cursor_col: 0,
+            scroll: 0,
+            file_path: PathBuf::from("test.txt"),
+            modified: false,
+            last_op_was_cut: false,
+            undo_stack: Vec::new(),
+            message: None,
+            clip_lines: Vec::new(),
+            syntax: None,
+        }
+    }
+
+    #[test]
+    fn edits_stay_on_utf8_boundaries() {
+        let mut ed = editor_with("");
+
+        ed.insert_char('é');
+        ed.insert_char('x');
+        assert_eq!(ed.lines[0], "éx");
+
+        ed.delete_char();
+        assert_eq!(ed.lines[0], "é");
+
+        ed.move_left();
+        ed.delete_forward();
+        assert_eq!(ed.lines[0], "");
+    }
+
+    #[test]
+    fn search_after_utf8_does_not_repeat_current_match() {
+        let mut ed = editor_with("éabc abc");
+        ed.cursor_col = 2;
+
+        assert!(ed.find_next("abc"));
+
+        assert_eq!(ed.cursor_col, 6);
     }
 }

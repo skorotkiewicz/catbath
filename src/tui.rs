@@ -41,6 +41,19 @@ fn hscroll(editor: &Editor, width: u16, show_line_numbers: bool) -> usize {
         .saturating_sub(text_width(width, show_line_numbers).saturating_sub(1))
 }
 
+fn prefix(s: &str, max: usize) -> &str {
+    &s[..Editor::floor_char_boundary(s, max)]
+}
+
+fn visible_slice(s: &str, start: usize, max: usize) -> &str {
+    if max == 0 || start >= s.len() {
+        return "";
+    }
+    let start = Editor::ceil_char_boundary(s, start);
+    let end = Editor::floor_char_boundary(s, start + max);
+    &s[start..end]
+}
+
 pub fn render(
     editor: &Editor,
     stdout: &mut io::Stdout,
@@ -70,7 +83,7 @@ pub fn render(
         editor.file_path.display()
     );
     let top = if top.len() > width as usize {
-        &top[..width as usize]
+        prefix(&top, width as usize)
     } else {
         &top
     };
@@ -112,13 +125,7 @@ pub fn render(
             )?;
         }
         let line = &editor.lines[idx];
-        let disp = if maxc == 0 || hscroll >= line.len() {
-            ""
-        } else if line.len() > hscroll + maxc {
-            &line[hscroll..hscroll + maxc]
-        } else {
-            &line[hscroll..]
-        };
+        let disp = visible_slice(line, hscroll, maxc);
         queue!(stdout, MoveTo(gutter as u16, y))?;
         editor.render_line(stdout, disp)?;
         queue!(stdout, ResetColor, Clear(ClearType::UntilNewLine))?;
@@ -161,7 +168,7 @@ fn queue_status(
         )
     };
     let st = if status.len() > width as usize {
-        &status[..width as usize]
+        prefix(&status, width as usize)
     } else {
         &status
     };
@@ -499,7 +506,7 @@ fn finish_ext(ed: &mut Editor, key: &str, input: &str, result: io::Result<String
         out.split('\n').map(String::from).collect()
     };
     ed.cursor_row = ed.cursor_row.min(ed.lines.len().saturating_sub(1));
-    ed.cursor_col = ed.cursor_col.min(ed.lines[ed.cursor_row].len());
+    ed.cursor_col = Editor::clamp_col(&ed.lines[ed.cursor_row], ed.cursor_col);
     ed.modified = true;
     ed.message = Some(format!("{} applied", key));
 }
@@ -536,5 +543,12 @@ mod tests {
             ed.message.as_deref(),
             Some("F1 finished; buffer changed, ignored")
         );
+    }
+
+    #[test]
+    fn render_slices_stay_on_utf8_boundaries() {
+        assert_eq!(prefix("éx", 1), "");
+        assert_eq!(visible_slice("éx", 0, 2), "é");
+        assert_eq!(visible_slice("éx", 1, 2), "x");
     }
 }
