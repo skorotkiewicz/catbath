@@ -5,8 +5,8 @@ use std::time::Duration;
 use crossterm::{
     cursor::{Hide, MoveTo, Show},
     event::{
-        self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEvent, KeyModifiers,
-        MouseEventKind,
+        self, /* DisableMouseCapture, EnableMouseCapture, */ Event, KeyCode, KeyEvent,
+        KeyModifiers, MouseEventKind,
     },
     execute, queue,
     style::{Color, Print, ResetColor, SetBackgroundColor, SetForegroundColor},
@@ -19,12 +19,19 @@ use crossterm::{
 use crate::core::Editor;
 use crate::extensions;
 
-pub fn render(editor: &Editor, stdout: &mut io::Stdout, width: u16, height: u16) -> io::Result<()> {
+pub fn render(
+    editor: &Editor,
+    stdout: &mut io::Stdout,
+    width: u16,
+    height: u16,
+    show_line_numbers: bool,
+) -> io::Result<()> {
     queue!(stdout, Clear(ClearType::All))?;
 
     let vis = (height as usize).saturating_sub(2).max(1);
     let start = editor.scroll;
     let end = (start + vis).min(editor.lines.len());
+    let gutter = if show_line_numbers { 7 } else { 0 };
 
     // Top bar
     let fname = editor
@@ -33,7 +40,7 @@ pub fn render(editor: &Editor, stdout: &mut io::Stdout, width: u16, height: u16)
         .and_then(|n| n.to_str())
         .unwrap_or("untitled");
     let top = format!(
-        " {} {}  |  {}  |  ^x quit  ^w save  ^z undo  ^k cut  ^u paste  ^f search",
+        " {} {}  |  {}  |  ^x quit  ^w save  ^l lines  ^z undo  ^k cut  ^u paste  ^f search",
         fname,
         if editor.modified { "(*)" } else { "" },
         editor.file_path.display()
@@ -62,22 +69,24 @@ pub fn render(editor: &Editor, stdout: &mut io::Stdout, width: u16, height: u16)
     // Lines
     for (i, idx) in (start..end).enumerate() {
         let y = i as u16 + 1;
-        let ln = format!(" {:>4} ", idx + 1);
-        queue!(
-            stdout,
-            MoveTo(0, y),
-            SetForegroundColor(Color::DarkGrey),
-            Print(&ln),
-            ResetColor
-        )?;
+        if show_line_numbers {
+            let ln = format!(" {:>4} ", idx + 1);
+            queue!(
+                stdout,
+                MoveTo(0, y),
+                SetForegroundColor(Color::DarkGrey),
+                Print(&ln),
+                ResetColor
+            )?;
+        }
         let line = &editor.lines[idx];
-        let maxc = (width as usize).saturating_sub(7);
+        let maxc = (width as usize).saturating_sub(gutter);
         let disp = if line.len() > maxc {
             &line[..maxc]
         } else {
             line
         };
-        queue!(stdout, MoveTo(7, y))?;
+        queue!(stdout, MoveTo(gutter as u16, y))?;
         editor.render_line(stdout, disp)?;
     }
 
@@ -115,7 +124,7 @@ pub fn render(editor: &Editor, stdout: &mut io::Stdout, width: u16, height: u16)
 
     // Cursor position
     let cy = 1u16 + (editor.cursor_row - editor.scroll) as u16;
-    let cx = 7u16 + editor.cursor_col as u16;
+    let cx = gutter as u16 + editor.cursor_col as u16;
     if cy < height - 1 {
         queue!(stdout, MoveTo(cx, cy), Show)?;
     }
@@ -131,7 +140,7 @@ pub fn run(path: &str) -> io::Result<()> {
         stdout,
         EnterAlternateScreen,
         Hide,
-        EnableMouseCapture,
+        // EnableMouseCapture,
         DisableLineWrap,
         SetTitle("editor")
     )?;
@@ -140,7 +149,8 @@ pub fn run(path: &str) -> io::Result<()> {
     let (mut w, mut h) = terminal::size()?;
     let mut vis = (h as usize).saturating_sub(2).max(1);
     ed.adjust_scroll(vis);
-    render(&ed, &mut stdout, w, h)?;
+    let mut show_line_numbers = true;
+    render(&ed, &mut stdout, w, h, show_line_numbers)?;
 
     let mut searching = false;
     let mut confirming_quit = false;
@@ -214,6 +224,14 @@ pub fn run(path: &str) -> io::Result<()> {
                             (KeyCode::Char('w'), KeyModifiers::CONTROL) => {
                                 let _ = ed.save();
                             }
+                            (KeyCode::Char('l'), KeyModifiers::CONTROL) => {
+                                show_line_numbers = !show_line_numbers;
+                                ed.message = Some(if show_line_numbers {
+                                    "line numbers shown".into()
+                                } else {
+                                    "line numbers hidden".into()
+                                });
+                            }
                             (KeyCode::Char('z'), KeyModifiers::CONTROL) => ed.undo(),
                             (KeyCode::Char('k'), KeyModifiers::CONTROL) => ed.cut_line(),
                             (KeyCode::Char('u'), KeyModifiers::CONTROL) => ed.paste(),
@@ -251,7 +269,7 @@ pub fn run(path: &str) -> io::Result<()> {
                                 let input = ed.lines.join("\n");
 
                                 ed.message = Some(format!("running {}...", key));
-                                render(&ed, &mut stdout, w, h).ok();
+                                render(&ed, &mut stdout, w, h, show_line_numbers).ok();
 
                                 let file = ed.file_path.to_string_lossy();
                                 match extensions::run(
@@ -283,25 +301,26 @@ pub fn run(path: &str) -> io::Result<()> {
                         }
                     }
                     ed.adjust_scroll(vis);
-                    render(&ed, &mut stdout, w, h)?;
+                    render(&ed, &mut stdout, w, h, show_line_numbers)?;
                 }
                 Event::Mouse(m) => {
+                    let gutter = if show_line_numbers { 7 } else { 0 };
                     if let MouseEventKind::Down(_) | MouseEventKind::Drag(_) = m.kind {
                         let r = (m.row as usize).saturating_sub(1) + ed.scroll;
                         if r < ed.lines.len() {
                             ed.cursor_row = r;
-                            let c = (m.column as usize).saturating_sub(7);
+                            let c = (m.column as usize).saturating_sub(gutter);
                             ed.cursor_col = c.min(ed.lines[r].len());
                         }
                         ed.adjust_scroll(vis);
-                        render(&ed, &mut stdout, w, h)?;
+                        render(&ed, &mut stdout, w, h, show_line_numbers)?;
                     } else if let MouseEventKind::ScrollUp = m.kind {
                         ed.scroll = ed.scroll.saturating_sub(4);
-                        render(&ed, &mut stdout, w, h)?;
+                        render(&ed, &mut stdout, w, h, show_line_numbers)?;
                     } else if let MouseEventKind::ScrollDown = m.kind {
                         let mx = ed.lines.len().saturating_sub(vis);
                         ed.scroll = (ed.scroll + 4).min(mx);
-                        render(&ed, &mut stdout, w, h)?;
+                        render(&ed, &mut stdout, w, h, show_line_numbers)?;
                     }
                 }
                 Event::Resize(nw, nh) => {
@@ -309,7 +328,7 @@ pub fn run(path: &str) -> io::Result<()> {
                     h = nh;
                     vis = (h as usize).saturating_sub(2).max(1);
                     ed.adjust_scroll(vis);
-                    render(&ed, &mut stdout, w, h)?;
+                    render(&ed, &mut stdout, w, h, show_line_numbers)?;
                 }
                 _ => {}
             }
@@ -321,7 +340,7 @@ pub fn run(path: &str) -> io::Result<()> {
         LeaveAlternateScreen,
         Show,
         EnableLineWrap,
-        DisableMouseCapture
+        // DisableMouseCapture
     )?;
     terminal::disable_raw_mode()?;
     Ok(())
