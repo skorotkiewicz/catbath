@@ -61,8 +61,6 @@ pub fn render(
     height: u16,
     show_line_numbers: bool,
 ) -> io::Result<()> {
-    queue!(stdout, Hide)?;
-
     let vis = (height as usize).saturating_sub(2).max(1);
     let start = editor.scroll;
     let end = (start + vis).min(editor.lines.len());
@@ -106,11 +104,11 @@ pub fn render(
     // Lines
     for i in 0..vis {
         let y = i as u16 + 1;
-        queue!(stdout, MoveTo(0, y), ResetColor)?;
+        queue!(stdout, ResetColor)?;
 
         let idx = start + i;
         if idx >= end {
-            queue!(stdout, Clear(ClearType::UntilNewLine))?;
+            queue!(stdout, MoveTo(0, y), Clear(ClearType::UntilNewLine))?;
             continue;
         }
 
@@ -120,8 +118,7 @@ pub fn render(
                 stdout,
                 MoveTo(0, y),
                 SetForegroundColor(Color::DarkGrey),
-                Print(&ln),
-                ResetColor
+                Print(&ln)
             )?;
         }
         let line = &editor.lines[idx];

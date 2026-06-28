@@ -125,11 +125,11 @@ impl Editor {
                     queue!(out, SetForegroundColor(Color::Yellow))?;
                 } else if syn.types.contains(word) {
                     queue!(out, SetForegroundColor(Color::Cyan))?;
-                } else {
-                    queue!(out, ResetColor)?;
                 }
                 out.write_all(word.as_bytes())?;
-                queue!(out, ResetColor)?;
+                if syn.keywords.contains(word) || syn.types.contains(word) {
+                    queue!(out, ResetColor)?;
+                }
                 continue;
             }
 
