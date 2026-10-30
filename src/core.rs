@@ -1,10 +1,10 @@
 use std::{
     fs,
     io::{self, Write},
-    path::{Path, PathBuf},
-    process::{Command, Stdio},
+    path::PathBuf,
 };
 
+use crate::remote_file::RemoteFile;
 use crate::syntax;
 use crossterm::{
     queue,
@@ -56,12 +56,9 @@ impl Editor {
 
     pub fn new(path: PathBuf) -> io::Result<Self> {
         let path_str = path.to_string_lossy();
-        let content = Self::load(&path_str).unwrap_or_default();
-        let lines = if content.is_empty() {
-            vec!["".to_string()]
-        } else {
-            content.lines().map(str::to_string).collect()
-        };
+        let content = Self::load(&path_str)?;
+        // Keep the final empty line so saving preserves trailing newlines.
+        let lines = content.split('\n').map(str::to_string).collect();
         let syntax = syntax::Syntax::load(path_str.as_ref());
 
         Ok(Self {
@@ -86,6 +83,8 @@ impl Editor {
         };
         let bytes = vis.as_bytes();
         let comment = syn.comment.as_bytes();
+        let mut quote_buffer = [0; 4];
+        let quote = syn.string.encode_utf8(&mut quote_buffer).as_bytes();
         let mut i = 0;
 
         while i < bytes.len() {
@@ -97,19 +96,24 @@ impl Editor {
                 return Ok(()); // Rest of line is comment
             }
 
-            // 2. Strings (lazy: no escape logic, just find next quote)
-            if bytes[i] == syn.string as u8 {
+            // 2. Strings, including escaped quotes and Unicode delimiters.
+            if bytes[i..].starts_with(quote) {
                 queue!(out, SetForegroundColor(Color::Green))?;
-                out.write_all(&[bytes[i]])?;
-                i += 1;
-                while i < bytes.len() && bytes[i] != syn.string as u8 {
-                    out.write_all(&[bytes[i]])?;
-                    i += 1;
+                out.write_all(quote)?;
+                i += quote.len();
+                let start = i;
+                let mut escaped = false;
+                for c in vis[start..].chars() {
+                    i += c.len_utf8();
+                    if escaped {
+                        escaped = false;
+                    } else if c == syn.string {
+                        break;
+                    } else if c == '\\' {
+                        escaped = true;
+                    }
                 }
-                if i < bytes.len() {
-                    out.write_all(&[bytes[i]])?; // closing quote
-                    i += 1;
-                }
+                out.write_all(&bytes[start..i])?;
                 queue!(out, ResetColor)?;
                 continue;
             }
@@ -134,13 +138,18 @@ impl Editor {
             }
 
             // 4. Default text
-            out.write_all(&[bytes[i]])?;
-            i += 1;
+            let c = vis[i..]
+                .chars()
+                .next()
+                .expect("the byte offset is before the end of the line");
+            out.write_all(&bytes[i..i + c.len_utf8()])?;
+            i += c.len_utf8();
         }
         Ok(())
     }
 
     pub(crate) fn push_undo(&mut self) {
+        self.last_op_was_cut = false;
         if self.undo_stack.len() >= 30 {
             self.undo_stack.remove(0);
         }
@@ -149,6 +158,7 @@ impl Editor {
     }
 
     pub fn undo(&mut self) {
+        self.last_op_was_cut = false;
         if let Some((lines, row, col)) = self.undo_stack.pop() {
             self.lines = lines;
             self.cursor_row = row.min(self.lines.len().saturating_sub(1));
@@ -164,57 +174,26 @@ impl Editor {
     }
 
     pub fn load(path: &str) -> io::Result<String> {
-        if let Some(rest) = path.strip_prefix("ssh://") {
-            // Split "user@host" from "/path/to/file"
-            let (target, remote_path) = rest.split_once('/').unwrap_or((rest, ""));
-            let remote_path = format!("/{}", remote_path);
-
-            // Executes: ssh user@host cat /path/to/file
-            let out = Command::new("ssh")
-                .arg(target)
-                .arg("cat")
-                .arg(&remote_path)
-                .output()?;
-
-            if !out.status.success() {
-                return Err(io::Error::other(
-                    String::from_utf8_lossy(&out.stderr).to_string(),
-                ));
-            }
-            return Ok(String::from_utf8_lossy(&out.stdout).into_owned());
+        if let Some(remote) = RemoteFile::parse(path)? {
+            return remote.load();
         }
 
-        if Path::new(path).exists() {
-            fs::read_to_string(path)
-        } else {
-            Ok(String::new())
+        match fs::read_to_string(path) {
+            Ok(content) => Ok(content),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(String::new()),
+            Err(error) => Err(error),
         }
     }
 
     pub fn save_to(path: &str, s: &str) -> io::Result<()> {
-        if let Some(rest) = path.strip_prefix("ssh://") {
-            let (target, remote_path) = rest.split_once('/').unwrap_or((rest, ""));
-            let remote_path = format!("/{}", remote_path);
-            let mut child = Command::new("ssh")
-                .arg(target)
-                .arg("tee")
-                .arg(&remote_path)
-                .stdin(Stdio::piped())
-                .stdout(Stdio::null())
-                .spawn()?;
-            if let Some(mut stdin) = child.stdin.take() {
-                use std::io::Write;
-                stdin.write_all(s.as_bytes())?;
-            }
-            if !child.wait()?.success() {
-                return Err(io::Error::other("ssh save failed"));
-            }
-            return Ok(());
+        if let Some(remote) = RemoteFile::parse(path)? {
+            return remote.save(s);
         }
         fs::write(path, s)
     }
 
     pub fn save(&mut self) -> io::Result<()> {
+        self.last_op_was_cut = false;
         let content = self.lines.join("\n");
         Self::save_to(&self.file_path.to_string_lossy(), &content)?;
         self.modified = false;
@@ -291,6 +270,7 @@ impl Editor {
     }
 
     pub fn move_left(&mut self) {
+        self.last_op_was_cut = false;
         if self.cursor_col > 0 && self.cursor_row < self.lines.len() {
             let line = &self.lines[self.cursor_row];
             let col = Self::clamp_col(line, self.cursor_col);
@@ -302,6 +282,7 @@ impl Editor {
     }
 
     pub fn move_right(&mut self) {
+        self.last_op_was_cut = false;
         if self.cursor_row < self.lines.len() {
             let len = self.lines[self.cursor_row].len();
             let col = Self::ceil_char_boundary(&self.lines[self.cursor_row], self.cursor_col);
@@ -315,6 +296,7 @@ impl Editor {
     }
 
     pub fn move_up(&mut self) {
+        self.last_op_was_cut = false;
         if self.cursor_row > 0 {
             self.cursor_row -= 1;
             self.cursor_col = Self::clamp_col(&self.lines[self.cursor_row], self.cursor_col);
@@ -322,6 +304,7 @@ impl Editor {
     }
 
     pub fn move_down(&mut self) {
+        self.last_op_was_cut = false;
         if self.cursor_row + 1 < self.lines.len() {
             self.cursor_row += 1;
             self.cursor_col = Self::clamp_col(&self.lines[self.cursor_row], self.cursor_col);
@@ -329,15 +312,18 @@ impl Editor {
     }
 
     pub fn move_home(&mut self) {
+        self.last_op_was_cut = false;
         self.cursor_col = 0;
     }
     pub fn move_end(&mut self) {
+        self.last_op_was_cut = false;
         if self.cursor_row < self.lines.len() {
             self.cursor_col = self.lines[self.cursor_row].len();
         }
     }
 
     pub fn page_up(&mut self, vis: usize) {
+        self.last_op_was_cut = false;
         self.cursor_row = self.cursor_row.saturating_sub(vis.max(1));
         if self.cursor_row < self.lines.len() {
             self.cursor_col = Self::clamp_col(&self.lines[self.cursor_row], self.cursor_col);
@@ -346,6 +332,7 @@ impl Editor {
     }
 
     pub fn page_down(&mut self, vis: usize) {
+        self.last_op_was_cut = false;
         self.cursor_row = (self.cursor_row + vis.max(1)).min(self.lines.len().saturating_sub(1));
         if self.cursor_row < self.lines.len() {
             self.cursor_col = Self::clamp_col(&self.lines[self.cursor_row], self.cursor_col);
@@ -366,10 +353,11 @@ impl Editor {
     }
 
     pub fn find_next(&mut self, query: &str) -> bool {
+        self.last_op_was_cut = false;
         if query.is_empty() {
             return false;
         }
-        let q = query.to_lowercase();
+        let q: String = query.chars().flat_map(char::to_lowercase).collect();
         let start_r = self.cursor_row;
         let start_c = self
             .lines
@@ -379,21 +367,18 @@ impl Editor {
         for r in start_r..self.lines.len() {
             let line = &self.lines[r];
             let from = if r == start_r { start_c } else { 0 };
-            if let Some(p) = line.get(from..).unwrap_or("").to_lowercase().find(&q) {
+            if let Some(p) = find_case_insensitive(&line[from..], &q) {
                 self.cursor_row = r;
-                self.cursor_col = Self::ceil_char_boundary(line, from + p);
+                self.cursor_col = from + p;
                 self.message = Some(format!("found '{}'", query));
                 return true;
             }
         }
         for r in 0..=start_r {
             let line = &self.lines[r];
-            if let Some(p) = line.to_lowercase().find(&q) {
-                if r == start_r && p < start_c {
-                    continue;
-                }
+            if let Some(p) = find_case_insensitive(line, &q) {
                 self.cursor_row = r;
-                self.cursor_col = Self::ceil_char_boundary(line, p);
+                self.cursor_col = p;
                 self.message = Some(format!("found '{}' (wrapped)", query));
                 return true;
             }
@@ -411,6 +396,7 @@ impl Editor {
         if !self.last_op_was_cut {
             self.clip_lines.clear();
         }
+        self.push_undo();
 
         // Zero-clone cut: pull the String straight out of the Vec.
         let line = if self.lines.len() > 1 {
@@ -450,9 +436,24 @@ impl Editor {
     }
 }
 
+// Lowercasing can change UTF-8 lengths, so map the match back to the source.
+fn find_case_insensitive(line: &str, query: &str) -> Option<usize> {
+    let folded: String = line.chars().flat_map(char::to_lowercase).collect();
+    let found = folded.find(query)?;
+    let mut offset = 0;
+    for (original, c) in line.char_indices() {
+        offset += c.to_lowercase().map(char::len_utf8).sum::<usize>();
+        if found < offset {
+            return Some(original);
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_directory::TestDirectory;
 
     fn editor_with(text: &str) -> Editor {
         Editor {
@@ -494,5 +495,114 @@ mod tests {
         assert!(ed.find_next("abc"));
 
         assert_eq!(ed.cursor_col, 6);
+    }
+
+    #[test]
+    fn opening_and_saving_preserves_file_contents() {
+        let dir = TestDirectory::new();
+        let path = dir.path().join("roundtrip.txt");
+        for content in ["", "hello", "hello\n", "hello\n\n", "a\r\nb\r\n"] {
+            fs::write(&path, content).expect("write test input");
+            let mut ed = Editor::new(path.clone()).expect("open test input");
+            ed.save().expect("save test input");
+            assert_eq!(fs::read_to_string(&path).expect("read saved file"), content);
+        }
+    }
+
+    #[test]
+    fn invalid_utf8_is_reported_instead_of_opening_an_empty_buffer() {
+        let dir = TestDirectory::new();
+        let path = dir.path().join("invalid.txt");
+        fs::write(&path, [0xff]).expect("write invalid UTF-8");
+        assert!(
+            Editor::new(path).is_err(),
+            "invalid input must not be silently discarded"
+        );
+    }
+
+    #[test]
+    fn missing_file_opens_as_an_empty_buffer() {
+        let dir = TestDirectory::new();
+        let ed = Editor::new(dir.path().join("new.txt")).expect("open a new file");
+        assert_eq!(ed.lines, [""]);
+    }
+
+    #[test]
+    fn search_wraps_to_an_earlier_match_on_the_current_line() {
+        let mut ed = editor_with("abc tail");
+        ed.move_end();
+        assert!(ed.find_next("abc"), "search must wrap within a single line");
+        assert_eq!(ed.cursor_col, 0);
+    }
+
+    #[test]
+    fn unicode_case_conversion_keeps_original_search_offsets() {
+        let mut ed = editor_with("İ abc");
+        assert!(
+            ed.find_next("ABC"),
+            "case-insensitive search must find ASCII after Unicode"
+        );
+        assert_eq!(ed.cursor_col, 3);
+
+        let mut ed = editor_with("İ abc");
+        ed.move_end();
+        assert!(
+            ed.find_next("ABC"),
+            "wrapped search must use original byte offsets"
+        );
+        assert_eq!(ed.cursor_col, 3);
+    }
+
+    #[test]
+    fn cut_can_be_undone() {
+        let mut ed = editor_with("one\ntwo");
+        ed.cut_line();
+        ed.undo();
+        assert_eq!(ed.lines, ["one", "two"]);
+    }
+
+    #[test]
+    fn movement_breaks_a_sequence_of_cuts() {
+        let mut ed = editor_with("one\ntwo\nthree");
+        ed.cut_line();
+        ed.move_down();
+        ed.cut_line();
+        assert_eq!(ed.clip_lines, ["three"]);
+    }
+
+    #[test]
+    fn unicode_string_delimiters_do_not_split_utf8_with_color_codes() {
+        let mut ed = editor_with("");
+        ed.syntax = Some(syntax::Syntax {
+            keywords: Default::default(),
+            types: Default::default(),
+            comment: "//".into(),
+            string: 'ƀ',
+        });
+        let mut output = Vec::new();
+        ed.render_line(&mut output, "Ā ƀtextƀ")
+            .expect("render Unicode syntax");
+        let rendered =
+            String::from_utf8(output).expect("color codes must occur between complete characters");
+        assert!(rendered.contains("ƀtextƀ"), "keep a quoted string together");
+    }
+
+    #[test]
+    fn escaped_quotes_do_not_end_string_highlighting() {
+        let mut ed = editor_with("");
+        ed.syntax = Some(syntax::Syntax {
+            keywords: Default::default(),
+            types: Default::default(),
+            comment: "//".into(),
+            string: '"',
+        });
+        let mut output = Vec::new();
+        ed.render_line(&mut output, r#""a\" // still a string" // comment"#)
+            .expect("render an escaped quote");
+        let rendered = String::from_utf8(output).expect("UTF-8 output");
+        assert!(
+            rendered.contains(r#""a\" // still a string""#),
+            "escaped quotes must stay inside the highlighted string"
+        );
     }
 }

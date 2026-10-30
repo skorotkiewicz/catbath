@@ -13,18 +13,27 @@ textarea{flex:1;border:0;outline:0;background:#111;color:#eee;}
 <button onclick="runExt('F2')">F2</button>
 <span style="color:#888;font-size:12px" id="saved">(ctrl+e to save)</span>
 </div>
-<textarea id="ed" spellcheck="false">{content}</textarea>
+<textarea id="ed" spellcheck="false">
+{content}</textarea>
 <script>
 const ed=document.getElementById('ed');
 const st=document.getElementById('saved');
-function doSave(){
-fetch('/save',{method:'POST',body:ed.value})
-.then(()=>{
-let s=document.getElementById('saved');
-s.textContent='saved';
-setTimeout(()=>s.textContent='(ctrl+e to save)',650);
-});
+let savedText=ed.value;
+async function doSave(){
+const input=ed.value;
+st.textContent='saving...';
+try {
+const res=await fetch('/save',{method:'POST',headers:{'X-Catbath':'1'},body:input});
+if(!res.ok) throw new Error(await res.text());
+savedText=input;
+st.textContent=ed.value===input?'saved':'saved earlier version; unsaved changes remain';
+} catch(error) {
+st.textContent='save failed: '+error.message;
 }
+}
+window.addEventListener('beforeunload',e=>{
+if(ed.value!==savedText){e.preventDefault();e.returnValue='';}
+});
 document.addEventListener('keydown',e=>{
 if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='e'){
 e.preventDefault();
@@ -34,9 +43,9 @@ doSave();
 function runExt(key) {
 const input = ed.value;
 st.textContent = 'running ' + key + '...';
-fetch('/ext/' + key, {method:'POST', body: input})
+fetch('/ext/' + key, {method:'POST', headers:{'X-Catbath':'1'}, body: input})
 .then(res => {
-if (!res.ok) throw new Error('extension failed');
+if (!res.ok) return res.text().then(message=>{throw new Error(message);});
 return res.text();
 })
 .then(newText => {
@@ -48,8 +57,8 @@ const changed = newText !== input;
 ed.value = newText;
 st.textContent = changed ? key + ' applied' : key + ' returned no changes';
 })
-.catch(() => {
-st.textContent = 'error';
+.catch(error => {
+st.textContent = 'extension failed: '+error.message;
 });
 }
 </script>

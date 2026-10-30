@@ -1,11 +1,13 @@
 [package]
 name = "catbath"
-version = "0.1.7"
+version = "0.1.8"
 edition = "2024"
 description = "a tiny editor: terminal-first, browser-curious, extension-friendly."
 
 [dependencies]
 crossterm = "0.28"
+tiny_http = "0.12"
+unicode-width = "0.2"
 
 [profile.release]
 opt-level = "z"

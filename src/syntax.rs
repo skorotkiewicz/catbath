@@ -19,7 +19,7 @@ impl Syntax {
         }
 
         for path in [
-            format!("syntax/{}", ext),
+            format!("syntax/{}.tty", ext),
             format!("/usr/share/catbath/syntax/{}.tty", ext),
         ] {
             if let Ok(content) = std::fs::read_to_string(path) {

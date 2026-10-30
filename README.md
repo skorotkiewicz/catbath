@@ -12,22 +12,28 @@ a tiny editor: terminal-first, browser-curious, extension-friendly.
 ## usage
 
 ```
-catbath [-g|-w] <file>
+catbath [-g|-w] [--] <file>
 ```
 
 - `-g` GUI (TUI)
 - `-w` Web (browser editor)
 - `ssh://user@host/path/file.txt` for remote editing
+- `--` allows a filename beginning with `-`
 
 ## keys
 
-- `^Q` quit
-- `^S` save
+- `^Q` or `^X` quit, with a save prompt for modified files
+- `^S` or `^W` save
+- `^L` toggle line numbers
 - `^Z` undo
 - `^K` cut 
 - `^U` paste
 - `^F` search
 - `F1`..`F12` run extensions
+
+In the browser, use the Save button or `Ctrl+E` / `Cmd+E`. Failed saves and
+extensions display an error. Browser saves and extension inputs are limited to
+16 MiB. The server listens on a dynamically assigned local port.
 
 ## build
 
@@ -52,5 +58,5 @@ chmod +x ~/.config/catbath/extensions/F2
 
 ```sh
 mkdir -p ~/.config/catbath/syntax
-echo -e "keywords: def class return import if else\ncomment: #\nstring: \"" > ~/.config/catbath/syntax/py
+echo -e "keywords: def class return import if else\ncomment: #\nstring: \"" > ~/.config/catbath/syntax/py.tty
 ```
